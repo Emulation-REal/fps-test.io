@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Moddable FPS Game</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #111; }
+    canvas { display: block; background: #222; }
+    .esp-box {
+      position: absolute;
+      border: 2px solid red;
+      width: 40px; height: 60px;
+      pointer-events: none;
+    }
+    #modMenu {
+      position: absolute;
+      top: 10px; right: 10px;
+      background: rgba(0,0,0,0.8);
+      padding: 10px;
+      color: white;
+      font-family: sans-serif;
+      border-radius: 8px;
+    }
+    #modMenu h3 { margin-bottom: 8px; }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas"></canvas>
+  <div id="modMenu">
+    <h3>Mod Menu</h3>
+    <label><input type="checkbox" id="toggleESP"> ESP</label><br>
+  </div>
+
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    const player = { x: 100, y: 100, size: 20, speed: 3 };
+    const enemies = [];
+    const obstacles = [];
+
+    const keys = {};
+    let useESP = false;
+
+    // Toggle ESP
+    document.getElementById("toggleESP").onchange = e => {
+      useESP = e.target.checked;
+    };
+
+    // Movement input
+    window.addEventListener("keydown", e => keys[e.key] = true);
+    window.addEventListener("keyup", e => keys[e.key] = false);
+
+    // Generate enemies
+    for (let i = 0; i < 10; i++) {
+      enemies.push({ x: Math.random() * canvas.width, y: Math.random() * canvas.height, size: 20 });
+    }
+
+    // Generate obstacles
+    for (let i = 0; i < 5; i++) {
+      obstacles.push({ x: 200 + i * 150, y: 200, width: 100, height: 100 });
+    }
+
+    function drawPlayer() {
+      ctx.fillStyle = "lime";
+      ctx.fillRect(player.x, player.y, player.size, player.size);
+    }
+
+    function drawEnemies() {
+      ctx.fillStyle = "red";
+      enemies.forEach(e => {
+        ctx.fillRect(e.x, e.y, e.size, e.size);
+        if (useESP) drawESP(e);
+      });
+    }
+
+    function drawObstacles() {
+      ctx.fillStyle = "gray";
+      obstacles.forEach(o => {
+        ctx.fillRect(o.x, o.y, o.width, o.height);
+      });
+    }
+
+    function drawESP(enemy) {
+      ctx.strokeStyle = "yellow";
+      ctx.strokeRect(enemy.x, enemy.y, enemy.size, enemy.size);
+      ctx.beginPath();
+      ctx.moveTo(player.x + player.size/2, player.y + player.size/2);
+      ctx.lineTo(enemy.x + enemy.size/2, enemy.y + enemy.size/2);
+      ctx.stroke();
+    }
+
+    function updatePlayer() {
+      if (keys['w']) player.y -= player.speed;
+      if (keys['s']) player.y += player.speed;
+      if (keys['a']) player.x -= player.speed;
+      if (keys['d']) player.x += player.speed;
+    }
+
+    function gameLoop() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      updatePlayer();
+      drawObstacles();
+      drawPlayer();
+      drawEnemies();
+      requestAnimationFrame(gameLoop);
+    }
+
+    gameLoop();
+  </script>
+</body>
+</html>
