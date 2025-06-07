@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>FPS Terrain Shooter with Collisions & Aimbot</title>
+<title>FPS Terrain Shooter with Togglable Mods</title>
 <style>
   body,html { margin:0; overflow:hidden; height:100%; background:#111; }
   canvas { display: block; }
@@ -41,7 +41,7 @@
   #modMenu {
     position: absolute;
     top: 10px; right: 10px;
-    background: rgba(20,20,20,0.8);
+    background: rgba(20,20,20,0.9);
     color: #ddd;
     padding: 10px;
     font-family: monospace;
@@ -49,10 +49,11 @@
     display:none;
     user-select:none;
     z-index: 5;
+    width: 180px;
   }
   #modMenu label {
     display: block;
-    margin-bottom: 6px;
+    margin-bottom: 8px;
     cursor: pointer;
   }
 </style>
@@ -67,9 +68,9 @@
 <div id="overlay"></div>
 <div id="fovCircle"></div>
 <div id="modMenu">
-  <label><input type="checkbox" id="toggleAimbot" checked> Aimbot</label>
-  <label><input type="checkbox" id="toggleESP" checked> ESP</label>
-  <label><input type="checkbox" id="toggleTracers" checked> Tracers</label>
+  <label><input type="checkbox" id="toggleAimbot"> Aimbot</label>
+  <label><input type="checkbox" id="toggleESP"> ESP</label>
+  <label><input type="checkbox" id="toggleTracers"> Tracers</label>
   <div style="margin-top:10px; font-size:12px; color:#777;">Press 'P' to toggle this menu</div>
 </div>
 
@@ -101,25 +102,27 @@
     startScreen.style.display = 'flex';
   });
 
-  // Lights
-  const ambientLight = new THREE.AmbientLight(0x888888);
+  // Better lighting & environment
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
   scene.add(ambientLight);
-  const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-  dirLight.position.set(20, 100, 20);
+
+  const dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
+  dirLight.position.set(50, 100, 50);
+  dirLight.castShadow = true;
   scene.add(dirLight);
 
-  // Floor (terrain) with a subtle green color
+  // Floor (terrain) with green grass look
   const floorGeometry = new THREE.PlaneGeometry(100, 100, 32, 32);
-  const floorMaterial = new THREE.MeshPhongMaterial({color:0x228833});
+  const floorMaterial = new THREE.MeshStandardMaterial({color:0x228822, roughness:1, metalness:0});
   const floor = new THREE.Mesh(floorGeometry, floorMaterial);
   floor.rotation.x = -Math.PI / 2;
   floor.receiveShadow = true;
   scene.add(floor);
 
-  // Walls/boxes obstacles with collision
+  // Obstacles (boxes/walls) with visible colors
   const obstacles = [];
   const obstacleGeom = new THREE.BoxGeometry(4, 4, 4);
-  const obstacleMat = new THREE.MeshPhongMaterial({color: 0x555555});
+  const obstacleMat = new THREE.MeshStandardMaterial({color: 0x555555, roughness:0.8});
   for(let i=0; i<15; i++) {
     const obs = new THREE.Mesh(obstacleGeom, obstacleMat);
     obs.position.set(
@@ -127,6 +130,8 @@
       2,
       (Math.random()-0.5)*80
     );
+    obs.castShadow = true;
+    obs.receiveShadow = true;
     scene.add(obs);
     obstacles.push(obs);
   }
@@ -135,7 +140,6 @@
   let velocity = new THREE.Vector3();
   let direction = new THREE.Vector3();
   let canJump = false;
-  let onObject = false;
   const gravity = 30;
   const moveSpeed = 15;
 
@@ -143,17 +147,17 @@
   controls.getObject().position.set(0, 2, 0);
   scene.add(controls.getObject());
 
-  // Enemies
+  // Enemies (red colored)
   class Enemy {
     constructor() {
       this.group = new THREE.Group();
       const headGeom = new THREE.SphereGeometry(1, 12, 12);
-      const headMat = new THREE.MeshBasicMaterial({color:0xff4444});
+      const headMat = new THREE.MeshStandardMaterial({color:0xff4444, roughness:0.7});
       this.head = new THREE.Mesh(headGeom, headMat);
       this.group.add(this.head);
 
       const bodyGeom = new THREE.BoxGeometry(1.5, 2, 1);
-      const bodyMat = new THREE.MeshBasicMaterial({color:0xaa2222});
+      const bodyMat = new THREE.MeshStandardMaterial({color:0xaa2222, roughness:0.8});
       this.body = new THREE.Mesh(bodyGeom, bodyMat);
       this.body.position.y = -1.5;
       this.group.add(this.body);
@@ -197,7 +201,7 @@
   // Gun model
   const gun = new THREE.Group();
   const gunBodyGeom = new THREE.BoxGeometry(0.2, 0.2, 1);
-  const gunBodyMat = new THREE.MeshPhongMaterial({color:0x3333ff});
+  const gunBodyMat = new THREE.MeshStandardMaterial({color:0x3333ff, roughness:0.6});
   const gunBody = new THREE.Mesh(gunBodyGeom, gunBodyMat);
   gunBody.position.z = -0.5;
   gun.add(gunBody);
@@ -240,6 +244,11 @@
   const toggleESP = document.getElementById('toggleESP');
   const toggleTracers = document.getElementById('toggleTracers');
   let modMenuVisible = false;
+
+  // Turn mods OFF by default
+  toggleAimbot.checked = false;
+  toggleESP.checked = false;
+  toggleTracers.checked = false;
 
   window.addEventListener('keydown', e => {
     if(e.code === 'KeyP') {
@@ -323,7 +332,8 @@
 
     overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
 
-    if (toggleESP.checked || toggleTracers.checked) {
+    // ESP + Tracers
+    if ((toggleESP.checked || toggleTracers.checked) && controls.isLocked) {
       enemies.forEach(enemy => {
         const enemyPos = enemy.group.position.clone();
         enemyPos.y += 1.5;
@@ -349,7 +359,8 @@
       });
     }
 
-    if (isAiming && toggleAimbot.checked) {
+    // Aimbot
+    if (isAiming && toggleAimbot.checked && controls.isLocked) {
       fovCircle.style.display = 'block';
       fovCircle.style.width = fovRadius * 2 + 'px';
       fovCircle.style.height = fovRadius * 2 + 'px';
@@ -359,7 +370,7 @@
       fovCircle.style.display = 'none';
     }
 
-    if (isAiming && toggleAimbot.checked) {
+    if (isAiming && toggleAimbot.checked && controls.isLocked) {
       let bestEnemy = null;
       let bestDist = fovRadius;
 
