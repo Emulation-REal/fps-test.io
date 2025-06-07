@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>FPS Target Practice with Aimbot (Three.js v0.125.2)</title>
+<title>FPS Terrain Shooter with Collisions & Aimbot</title>
 <style>
   body,html { margin:0; overflow:hidden; height:100%; background:#111; }
   canvas { display: block; }
@@ -94,7 +94,6 @@
     controls.lock();
   });
 
-  // When pointer locked, hide start screen and enable game
   controls.addEventListener('lock', () => {
     startScreen.style.display = 'none';
   });
@@ -102,14 +101,22 @@
     startScreen.style.display = 'flex';
   });
 
-  // Floor
-  const floorGeometry = new THREE.PlaneGeometry(100, 100);
-  const floorMaterial = new THREE.MeshPhongMaterial({color:0x222222});
+  // Lights
+  const ambientLight = new THREE.AmbientLight(0x888888);
+  scene.add(ambientLight);
+  const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+  dirLight.position.set(20, 100, 20);
+  scene.add(dirLight);
+
+  // Floor (terrain) with a subtle green color
+  const floorGeometry = new THREE.PlaneGeometry(100, 100, 32, 32);
+  const floorMaterial = new THREE.MeshPhongMaterial({color:0x228833});
   const floor = new THREE.Mesh(floorGeometry, floorMaterial);
-  floor.rotation.x = -Math.PI/2;
+  floor.rotation.x = -Math.PI / 2;
+  floor.receiveShadow = true;
   scene.add(floor);
 
-  // Obstacles
+  // Walls/boxes obstacles with collision
   const obstacles = [];
   const obstacleGeom = new THREE.BoxGeometry(4, 4, 4);
   const obstacleMat = new THREE.MeshPhongMaterial({color: 0x555555});
@@ -124,12 +131,17 @@
     obstacles.push(obs);
   }
 
-  // Lights
-  const ambientLight = new THREE.AmbientLight(0x666666);
-  scene.add(ambientLight);
-  const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-  dirLight.position.set(20, 50, 10);
-  scene.add(dirLight);
+  // Player physics variables
+  let velocity = new THREE.Vector3();
+  let direction = new THREE.Vector3();
+  let canJump = false;
+  let onObject = false;
+  const gravity = 30;
+  const moveSpeed = 15;
+
+  // Starting position
+  controls.getObject().position.set(0, 2, 0);
+  scene.add(controls.getObject());
 
   // Enemies
   class Enemy {
@@ -162,16 +174,20 @@
     update(delta) {
       this.group.position.add(this.direction.clone().multiplyScalar(this.speed * delta));
 
-      if(this.group.position.x > 50 || this.group.position.x < -50) this.direction.x *= -1;
-      if(this.group.position.z > 50 || this.group.position.z < -50) this.direction.z *= -1;
+      if(this.group.position.x > 48 || this.group.position.x < -48) this.direction.x *= -1;
+      if(this.group.position.z > 48 || this.group.position.z < -48) this.direction.z *= -1;
 
       for(let obs of obstacles) {
-        const dist = obs.position.distanceTo(this.group.position);
-        if(dist < 4) {
+        if (this.checkCollision(obs)) {
           this.direction.multiplyScalar(-1);
           break;
         }
       }
+    }
+    checkCollision(mesh) {
+      const box1 = new THREE.Box3().setFromObject(this.group);
+      const box2 = new THREE.Box3().setFromObject(mesh);
+      return box1.intersectsBox(box2);
     }
   }
 
@@ -206,8 +222,7 @@
   window.addEventListener('mouseup', e => { if(e.button === 2) isAiming = false; });
   window.addEventListener('contextmenu', e => e.preventDefault());
 
-  const speed = 15;
-
+  // Overlay for ESP and tracers
   const overlay = document.getElementById('overlay');
   const overlayCanvas = document.createElement('canvas');
   overlayCanvas.width = window.innerWidth;
@@ -215,9 +230,11 @@
   overlay.appendChild(overlayCanvas);
   const overlayCtx = overlayCanvas.getContext('2d');
 
+  // FOV Circle for aimbot
   const fovCircle = document.getElementById('fovCircle');
   const fovRadius = 150;
 
+  // Mod menu controls
   const modMenu = document.getElementById('modMenu');
   const toggleAimbot = document.getElementById('toggleAimbot');
   const toggleESP = document.getElementById('toggleESP');
@@ -233,22 +250,70 @@
 
   const clock = new THREE.Clock();
 
+  function playerCollides(pos) {
+    // Check collision with obstacles
+    const playerBox = new THREE.Box3(
+      new THREE.Vector3(pos.x - 0.5, pos.y - 1, pos.z - 0.5),
+      new THREE.Vector3(pos.x + 0.5, pos.y + 1, pos.z + 0.5)
+    );
+    for(let obs of obstacles) {
+      const obsBox = new THREE.Box3().setFromObject(obs);
+      if(playerBox.intersectsBox(obsBox)) return true;
+    }
+    // Boundaries of the map
+    if(pos.x < -50 || pos.x > 50 || pos.z < -50 || pos.z > 50) return true;
+    return false;
+  }
+
   function animate() {
     requestAnimationFrame(animate);
     const delta = clock.getDelta();
 
     if (controls.isLocked) {
-      let dir = new THREE.Vector3();
-      if(keys['KeyW']) dir.z -= 1;
-      if(keys['KeyS']) dir.z += 1;
-      if(keys['KeyA']) dir.x -= 1;
-      if(keys['KeyD']) dir.x += 1;
-      dir.normalize();
-      if(dir.length() > 0) {
-        const moveVector = dir.clone().applyQuaternion(camera.quaternion).multiplyScalar(speed * delta);
-        controls.getObject().position.add(moveVector);
-        controls.getObject().position.x = THREE.MathUtils.clamp(controls.getObject().position.x, -48, 48);
-        controls.getObject().position.z = THREE.MathUtils.clamp(controls.getObject().position.z, -48, 48);
+      velocity.x -= velocity.x * 10.0 * delta;
+      velocity.z -= velocity.z * 10.0 * delta;
+      velocity.y -= gravity * delta;
+
+      direction.z = Number(keys['KeyW']) - Number(keys['KeyS']);
+      direction.x = Number(keys['KeyD']) - Number(keys['KeyA']);
+      direction.normalize();
+
+      if (direction.length() > 0) {
+        // Move on the XZ plane
+        const camDir = new THREE.Vector3();
+        camera.getWorldDirection(camDir);
+        camDir.y = 0;
+        camDir.normalize();
+
+        const camRight = new THREE.Vector3();
+        camRight.crossVectors(camera.up, camDir).normalize();
+
+        velocity.x -= camRight.x * direction.x * moveSpeed * delta;
+        velocity.z -= camRight.z * direction.x * moveSpeed * delta;
+        velocity.x -= camDir.x * direction.z * moveSpeed * delta;
+        velocity.z -= camDir.z * direction.z * moveSpeed * delta;
+      }
+
+      // Calculate tentative new position
+      const pos = controls.getObject().position.clone();
+      pos.x += velocity.x * delta;
+      pos.y += velocity.y * delta;
+      pos.z += velocity.z * delta;
+
+      // Floor collision
+      if (pos.y < 2) {
+        velocity.y = 0;
+        pos.y = 2;
+        canJump = true;
+      }
+
+      // Player collision with obstacles
+      if (!playerCollides(pos)) {
+        controls.getObject().position.copy(pos);
+      } else {
+        // Cancel velocity movement if collision
+        velocity.x = 0;
+        velocity.z = 0;
       }
     }
 
