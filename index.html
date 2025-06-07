@@ -2,26 +2,41 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>3D FPS Game</title>
+  <title>Advanced 3D FPS Game</title>
   <style>
-    body, html {
-      margin: 0;
-      padding: 0;
-      overflow: hidden;
-      background: #000;
+    body, html { margin: 0; padding: 0; overflow: hidden; background: #000; }
+    canvas { display: block; }
+    #modMenu {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      background: rgba(0, 0, 0, 0.8);
+      color: white;
+      padding: 10px;
+      font-family: monospace;
+      display: none;
+      border: 1px solid white;
+      z-index: 10;
     }
-    canvas {
+    #modMenu label {
       display: block;
+      margin-bottom: 5px;
     }
   </style>
 </head>
 <body>
+  <div id="modMenu">
+    <label><input type="checkbox" id="esp"> ESP</label>
+    <label><input type="checkbox" id="tracers"> Tracers</label>
+    <label><input type="checkbox" id="aimbot"> Aimbot</label>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/controls/PointerLockControls.js"></script>
   <script>
-    // Basic setup
+    // Scene, Camera, Renderer
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
     const renderer = new THREE.WebGLRenderer();
     renderer.setSize(window.innerWidth, window.innerHeight);
     document.body.appendChild(renderer.domElement);
@@ -29,34 +44,35 @@
     // Lighting
     const light = new THREE.DirectionalLight(0xffffff, 1);
     light.position.set(10, 20, 10);
-    scene.add(light);
-    scene.add(new THREE.AmbientLight(0x404040));
+    scene.add(light, new THREE.AmbientLight(0x404040));
 
     // Floor
-    const floorGeometry = new THREE.PlaneGeometry(100, 100);
-    const floorMaterial = new THREE.MeshStandardMaterial({ color: 0x333333 });
-    const floor = new THREE.Mesh(floorGeometry, floorMaterial);
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), new THREE.MeshStandardMaterial({color: 0x222222}));
     floor.rotation.x = -Math.PI / 2;
     scene.add(floor);
 
-    // Pointer Lock Controls
+    // PointerLock
     const controls = new THREE.PointerLockControls(camera, document.body);
     document.body.addEventListener('click', () => controls.lock());
     scene.add(controls.getObject());
 
-    // Movement controls
-    const velocity = new THREE.Vector3();
-    const direction = new THREE.Vector3();
-    const keys = {};
-    document.addEventListener('keydown', (e) => keys[e.code] = true);
-    document.addEventListener('keyup', (e) => keys[e.code] = false);
+    const keys = {}, velocity = new THREE.Vector3(), direction = new THREE.Vector3();
+    document.addEventListener('keydown', e => keys[e.code] = true);
+    document.addEventListener('keyup', e => keys[e.code] = false);
 
     // Gun
-    const gunGeometry = new THREE.BoxGeometry(0.2, 0.1, 1);
-    const gunMaterial = new THREE.MeshStandardMaterial({ color: 0x00ff00 });
-    const gun = new THREE.Mesh(gunGeometry, gunMaterial);
+    const gun = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.1, 1), new THREE.MeshStandardMaterial({ color: 0x00ff00 }));
     gun.position.set(0.2, -0.2, -1);
     camera.add(gun);
+
+    // Crosshair and FOV ring
+    const crosshair = new THREE.Mesh(new THREE.RingGeometry(0.01, 0.015, 32), new THREE.MeshBasicMaterial({color: 0xffff00}));
+    crosshair.position.z = -2;
+    camera.add(crosshair);
+
+    const aimFOV = new THREE.Mesh(new THREE.RingGeometry(0.2, 0.21, 64), new THREE.MeshBasicMaterial({color: 0x00ffff, side: THREE.DoubleSide}));
+    aimFOV.position.z = -2;
+    camera.add(aimFOV);
 
     // Obstacles
     const obstacles = [];
@@ -69,49 +85,102 @@
 
     // Enemies
     const enemies = [];
-    const enemyGeometry = new THREE.BoxGeometry(1, 2, 1);
-    const enemyMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000 });
-    for (let i = 0; i < 5; i++) {
-      const enemy = new THREE.Mesh(enemyGeometry, enemyMaterial.clone());
+    function spawnEnemy() {
+      const geo = new THREE.BoxGeometry(1, 2, 1);
+      const mat = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+      const enemy = new THREE.Mesh(geo, mat);
       enemy.position.set(Math.random() * 80 - 40, 1, Math.random() * 80 - 40);
       enemy.health = 100;
       scene.add(enemy);
       enemies.push(enemy);
     }
+    for (let i = 0; i < 5; i++) spawnEnemy();
+
+    // Player
+    let playerHealth = 100;
+    function respawnPlayer() {
+      controls.getObject().position.set(0, 2, 0);
+      playerHealth = 100;
+    }
+    respawnPlayer();
 
     // Shooting
     document.addEventListener('mousedown', () => {
-      const raycaster = new THREE.Raycaster(camera.getWorldPosition(new THREE.Vector3()), camera.getWorldDirection(new THREE.Vector3()));
-      const intersects = raycaster.intersectObjects(enemies);
-      if (intersects.length > 0) {
-        const enemy = intersects[0].object;
-        enemy.health -= 50;
-        if (enemy.health <= 0) {
-          scene.remove(enemy);
-          enemies.splice(enemies.indexOf(enemy), 1);
+      const ray = new THREE.Raycaster(camera.getWorldPosition(new THREE.Vector3()), camera.getWorldDirection(new THREE.Vector3()));
+      const hits = ray.intersectObjects(enemies);
+      if (hits.length > 0) {
+        const e = hits[0].object;
+        e.health -= 50;
+        if (e.health <= 0) {
+          scene.remove(e);
+          enemies.splice(enemies.indexOf(e), 1);
+          spawnEnemy();
         }
       }
     });
+
+    // Mod Menu
+    let espEnabled = false, tracersEnabled = false, aimbotEnabled = false;
+    const menu = document.getElementById("modMenu");
+    document.addEventListener("keydown", e => {
+      if (e.key.toLowerCase() === "p") menu.style.display = menu.style.display === "none" ? "block" : "none";
+    });
+    document.getElementById("esp").addEventListener("change", e => espEnabled = e.target.checked);
+    document.getElementById("tracers").addEventListener("change", e => tracersEnabled = e.target.checked);
+    document.getElementById("aimbot").addEventListener("change", e => aimbotEnabled = e.target.checked);
+
+    const tracerLines = [];
 
     // Animation loop
     function animate() {
       requestAnimationFrame(animate);
 
-      const delta = 0.1;
+      // Movement
       direction.z = Number(keys['KeyW']) - Number(keys['KeyS']);
       direction.x = Number(keys['KeyD']) - Number(keys['KeyA']);
       direction.normalize();
-
+      const delta = 0.1;
       velocity.x -= velocity.x * 10.0 * delta;
       velocity.z -= velocity.z * 10.0 * delta;
       velocity.x += direction.x * 400.0 * delta;
       velocity.z += direction.z * 400.0 * delta;
-
       controls.moveRight(velocity.x * delta);
       controls.moveForward(velocity.z * delta);
 
+      // Player "death" check
+      if (playerHealth <= 0) respawnPlayer();
+
+      // Aimbot
+      if (aimbotEnabled && enemies.length > 0) {
+        const closest = enemies.reduce((a, b) =>
+          camera.position.distanceTo(a.position) < camera.position.distanceTo(b.position) ? a : b
+        );
+        camera.lookAt(closest.position);
+      }
+
+      // ESP / Tracers
+      tracerLines.forEach(line => scene.remove(line));
+      tracerLines.length = 0;
+
+      enemies.forEach(enemy => {
+        if (espEnabled) {
+          const boxHelper = new THREE.BoxHelper(enemy, 0xffff00);
+          scene.add(boxHelper);
+          tracerLines.push(boxHelper);
+        }
+        if (tracersEnabled) {
+          const points = [camera.position.clone(), enemy.position.clone()];
+          const geom = new THREE.BufferGeometry().setFromPoints(points);
+          const mat = new THREE.LineBasicMaterial({ color: 0x00ff00 });
+          const line = new THREE.Line(geom, mat);
+          scene.add(line);
+          tracerLines.push(line);
+        }
+      });
+
       renderer.render(scene, camera);
     }
+
     animate();
   </script>
 </body>
