@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>3D FPS Game with Guns, Enemies, and Mods</title>
+<title>3D FPS Game with Guns, Enemies, Mods, and Tracers</title>
 <style>
   body, html {
     margin: 0; padding: 0; overflow: hidden;
@@ -19,6 +19,7 @@
     border-radius: 8px;
     width: 200px;
     font-size: 14px;
+    z-index: 10;
   }
   #modMenu label {
     display: block;
@@ -29,6 +30,8 @@
     display: block;
     margin: 0 auto;
     background: #555;
+    position: relative;
+    z-index: 1;
   }
 </style>
 </head>
@@ -38,7 +41,8 @@
   <strong>Mods</strong><br/>
   <label><input type="checkbox" id="aimbotToggle" /> Aimbot</label>
   <label><input type="checkbox" id="noclipToggle" /> No Clip</label>
-  <label><input type="checkbox" id="espToggle" /> ESP (Outline Enemies)</label>
+  <label><input type="checkbox" id="espToggle" /> ESP (Glow)</label>
+  <label><input type="checkbox" id="tracerToggle" /> Tracers</label>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
@@ -46,7 +50,7 @@
 
 <script>
 (() => {
-  // Setup basic THREE.js scene, camera, and renderer
+  // Setup THREE.js
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x444444);
   const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
@@ -86,45 +90,35 @@
     obstacles.push(box);
   }
 
-  // Player setup
+  // Player
   const player = {
     velocity: new THREE.Vector3(0,0,0),
     direction: new THREE.Vector3(),
     speed: 10,
     canJump: false,
     height: 1.7,
-    boundingBox: new THREE.Box3(),
     position: new THREE.Vector3(0, 1.7, 10),
   };
 
-  // Set camera starting position
   camera.position.copy(player.position);
 
-  // Pointer lock controls for FPS look
+  // PointerLockControls
   const controls = new THREE.PointerLockControls(camera, document.body);
   document.body.addEventListener('click', () => {
     controls.lock();
   });
-
   controls.getObject().position.copy(player.position);
 
-  // Movement state
-  const move = {
-    forward: false,
-    backward: false,
-    left: false,
-    right: false,
-    jump: false,
-  };
+  // Movement flags
+  const move = { forward: false, backward: false, left: false, right: false };
 
-  // Keyboard input handlers
   document.addEventListener('keydown', e => {
     switch(e.code){
       case 'KeyW': move.forward = true; break;
       case 'KeyS': move.backward = true; break;
       case 'KeyA': move.left = true; break;
       case 'KeyD': move.right = true; break;
-      case 'Space': 
+      case 'Space':
         if(player.canJump){
           player.velocity.y = 8;
           player.canJump = false;
@@ -142,7 +136,7 @@
     }
   });
 
-  // Enemy setup
+  // Enemies
   const enemyGeometry = new THREE.BoxGeometry(1,2,1);
   const enemyMaterial = new THREE.MeshStandardMaterial({color: 0xff5555});
   const enemies = [];
@@ -159,17 +153,18 @@
     enemies.push(enemy);
   }
 
-  // Bullet setup
+  // Bullets
   const bullets = [];
   const bulletSpeed = 40;
   const bulletGeometry = new THREE.SphereGeometry(0.1, 8, 8);
   const bulletMaterial = new THREE.MeshBasicMaterial({color: 0xffff00});
 
-  // Mod toggles
+  // Mods state
   const mods = {
     aimbot: false,
     noclip: false,
     esp: false,
+    tracers: false,
   };
 
   document.getElementById('aimbotToggle').addEventListener('change', (e) => {
@@ -181,14 +176,20 @@
   document.getElementById('espToggle').addEventListener('change', (e) => {
     mods.esp = e.target.checked;
   });
+  document.getElementById('tracerToggle').addEventListener('change', (e) => {
+    mods.tracers = e.target.checked;
+    if(!mods.tracers){
+      clearTracers();
+    }
+  });
 
-  // Raycaster for shooting and obstacle collisions
+  // Raycaster for collision & shooting
   const raycaster = new THREE.Raycaster();
 
-  // Clock for delta time
+  // Clock for delta
   const clock = new THREE.Clock();
 
-  // Helper function: Check collision of player with obstacles
+  // Collision check player vs obstacles
   function checkCollision(newPos){
     const playerBox = new THREE.Box3().setFromCenterAndSize(
       newPos.clone().add(new THREE.Vector3(0, player.height/2, 0)),
@@ -202,19 +203,17 @@
     return false;
   }
 
-  // Enemy AI simple move towards player
+  // Enemy AI - move toward player
   function updateEnemies(delta){
     enemies.forEach(enemy => {
       const directionToPlayer = player.position.clone().sub(enemy.position);
-      directionToPlayer.y = 0; // keep on ground
-      const distance = directionToPlayer.length();
-      if(distance > 0.5){
+      directionToPlayer.y = 0;
+      const dist = directionToPlayer.length();
+      if(dist > 0.5){
         directionToPlayer.normalize();
         enemy.userData.direction.copy(directionToPlayer);
         enemy.position.add(directionToPlayer.multiplyScalar(enemy.userData.speed * delta));
       }
-      // Enemy bounding box collision with obstacles (basic)
-      // Could add better collision if needed
     });
   }
 
@@ -222,71 +221,57 @@
   function shoot(){
     const bullet = new THREE.Mesh(bulletGeometry, bulletMaterial);
     bullet.position.copy(camera.position);
-    // Direction from camera
     const dir = new THREE.Vector3();
     camera.getWorldDirection(dir);
-    bullet.userData = {
-      velocity: dir.multiplyScalar(bulletSpeed)
-    };
+    bullet.userData = { velocity: dir.multiplyScalar(bulletSpeed) };
     scene.add(bullet);
     bullets.push(bullet);
   }
 
-  // Auto shoot every 0.5 seconds when aimbot active
   let shootCooldown = 0;
 
-  // Aimbot helper: find closest enemy in view and aim towards it
+  // Aimbot helper
   function aimbot(delta){
     if(!mods.aimbot) return;
 
-    // Find closest enemy in front of player within FOV ~ 90 degrees
     let closestEnemy = null;
     let closestDist = Infinity;
-    const cameraDir = new THREE.Vector3();
-    camera.getWorldDirection(cameraDir);
+    const camDir = new THREE.Vector3();
+    camera.getWorldDirection(camDir);
 
     enemies.forEach(enemy => {
       const toEnemy = enemy.position.clone().sub(camera.position);
-      const distance = toEnemy.length();
+      const dist = toEnemy.length();
       toEnemy.normalize();
-      const angle = cameraDir.angleTo(toEnemy);
-
-      if(angle < Math.PI / 4 && distance < closestDist){
-        closestDist = distance;
+      const angle = camDir.angleTo(toEnemy);
+      if(angle < Math.PI / 4 && dist < closestDist){
+        closestDist = dist;
         closestEnemy = enemy;
       }
     });
 
     if(closestEnemy){
-      // Smoothly rotate controls toward enemy horizontally
       const enemyPos = closestEnemy.position.clone();
-      enemyPos.y = camera.position.y; // keep horizontal
+      enemyPos.y = camera.position.y;
       const playerPos = camera.position.clone();
       playerPos.y = camera.position.y;
 
       const desiredDir = enemyPos.clone().sub(playerPos).normalize();
       const desiredAngle = Math.atan2(desiredDir.x, desiredDir.z);
-      
-      // Current rotation (yaw) from controls
+
       const euler = new THREE.Euler().setFromQuaternion(controls.getObject().quaternion);
       let currentYaw = euler.y;
 
-      // Smooth rotation step
       let angleDiff = desiredAngle - currentYaw;
-
-      // Normalize angleDiff between -PI and PI
       angleDiff = ((angleDiff + Math.PI) % (2 * Math.PI)) - Math.PI;
 
-      const maxTurnSpeed = 5 * delta; // radians per second
+      const maxTurnSpeed = 5 * delta;
       angleDiff = THREE.MathUtils.clamp(angleDiff, -maxTurnSpeed, maxTurnSpeed);
 
       currentYaw += angleDiff;
-
-      // Update controls rotation
       euler.y = currentYaw;
       controls.getObject().quaternion.setFromEuler(euler);
 
-      // Auto shoot when roughly aimed
       if(Math.abs(angleDiff) < 0.1){
         if(shootCooldown <= 0){
           shoot();
@@ -302,23 +287,19 @@
       const b = bullets[i];
       b.position.addScaledVector(b.userData.velocity, delta);
 
-      // Remove bullet if too far
       if(b.position.distanceTo(camera.position) > 100){
         scene.remove(b);
         bullets.splice(i,1);
         continue;
       }
 
-      // Check collision with enemies
-      for(let j = enemies.length -1; j >=0; j--){
+      for(let j = enemies.length - 1; j >= 0; j--){
         const enemy = enemies[j];
         const enemyBox = new THREE.Box3().setFromObject(enemy);
         if(enemyBox.containsPoint(b.position)){
-          // Hit enemy
           scene.remove(enemy);
           enemies.splice(j, 1);
 
-          // Remove bullet
           scene.remove(b);
           bullets.splice(i,1);
           break;
@@ -327,11 +308,11 @@
     }
   }
 
-  // Basic player collision and movement
+  // Player movement and collisions
   function playerMovement(delta){
     player.velocity.x -= player.velocity.x * 10.0 * delta;
     player.velocity.z -= player.velocity.z * 10.0 * delta;
-    player.velocity.y -= 9.8 * 5 * delta; // gravity
+    player.velocity.y -= 9.8 * 5 * delta;
 
     player.direction.z = Number(move.forward) - Number(move.backward);
     player.direction.x = Number(move.right) - Number(move.left);
@@ -340,39 +321,34 @@
     if(move.forward || move.backward) player.velocity.z -= player.direction.z * player.speed * delta;
     if(move.left || move.right) player.velocity.x -= player.direction.x * player.speed * delta;
 
-    // Calculate new position based on velocity and controls rotation
     const controlObject = controls.getObject();
 
-    // Convert velocity from local space to world space
     const velocity = new THREE.Vector3(player.velocity.x, player.velocity.y, player.velocity.z);
     const euler = new THREE.Euler(0, controlObject.rotation.y, 0, 'YXZ');
     velocity.applyEuler(euler);
 
     const newPos = controlObject.position.clone().add(velocity.clone().multiplyScalar(delta));
 
-    // Ground check and collision
     if(!mods.noclip){
       if(newPos.y < player.height){
         player.velocity.y = 0;
         newPos.y = player.height;
         player.canJump = true;
       }
-
-      // Check collisions with obstacles only if not noclip
       if(!checkCollision(newPos)){
         controlObject.position.copy(newPos);
       }
     } else {
-      // noclip mode just moves freely
       controlObject.position.copy(newPos);
       if(newPos.y < 0) controlObject.position.y = 0;
       player.canJump = true;
     }
 
+    player.position.copy(controlObject.position);
     camera.position.copy(controlObject.position);
   }
 
-  // ESP (outline enemies)
+  // ESP glow
   function updateESP(){
     enemies.forEach(enemy => {
       if(mods.esp){
@@ -384,7 +360,37 @@
     });
   }
 
-  // Animate loop
+  // --- Tracers ---
+
+  // We'll draw tracers using THREE.Line objects
+
+  const tracerMaterial = new THREE.LineBasicMaterial({ color: 0x00ff00 });
+  const tracers = [];
+
+  function clearTracers(){
+    tracers.forEach(line => scene.remove(line));
+    tracers.length = 0;
+  }
+
+  function updateTracers(){
+    clearTracers();
+    if(!mods.tracers) return;
+
+    enemies.forEach(enemy => {
+      const points = [];
+      // From player's camera position
+      points.push(camera.position.clone());
+      // To enemy's position, elevated to center of enemy box
+      points.push(enemy.position.clone().add(new THREE.Vector3(0,1,0)));
+
+      const geometry = new THREE.BufferGeometry().setFromPoints(points);
+      const line = new THREE.Line(geometry, tracerMaterial);
+      scene.add(line);
+      tracers.push(line);
+    });
+  }
+
+  // Animation loop
   function animate(){
     const delta = clock.getDelta();
     shootCooldown -= delta;
@@ -395,6 +401,7 @@
       aimbot(delta);
       updateBullets(delta);
       updateESP();
+      updateTracers();
     }
 
     renderer.render(scene, camera);
@@ -403,12 +410,13 @@
 
   animate();
 
-  // Window resize handler
+  // Resize handler
   window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth/window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
   });
+
 })();
 </script>
 </body>
