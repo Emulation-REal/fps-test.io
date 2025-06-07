@@ -1,101 +1,191 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>3D FPS with Enemies + Mod Menu</title>
+  <meta charset="UTF-8">
+  <title>3D FPS Game with Mod Menu</title>
   <style>
     html, body {
-      margin: 0; padding: 0;
-      height: 100%; overflow: hidden;
-      background: #222; color: #eee;
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      overflow: hidden;
+      background: #222;
+      color: #eee;
       font-family: Arial, sans-serif;
-    }
-    #startScreen {
-      position: absolute;
-      top: 50%; left: 50%;
-      transform: translate(-50%, -50%);
-      text-align: center;
-      user-select: none;
-      z-index: 30;
-      background: rgba(0,0,0,0.6);
-      padding: 30px;
-      border-radius: 10px;
-    }
-    #startBtn {
-      font-size: 28px;
-      padding: 16px 50px;
-      cursor: pointer;
-      background: #0078d7;
-      border: none;
-      border-radius: 8px;
-      color: white;
     }
     #modMenu {
       position: absolute;
-      top: 10px; right: 10px;
-      background: rgba(0,0,0,0.85);
-      border: 1px solid #0078d7;
+      top: 10px;
+      right: 10px;
+      background: rgba(0,0,0,0.7);
+      border: 1px solid #00f;
       border-radius: 8px;
-      padding: 12px;
-      width: 220px;
+      padding: 10px;
+      width: 200px;
+      z-index: 10;
       display: none;
-      z-index: 40;
     }
     #modMenu h2 {
-      margin: 0 0 10px 0;
-      font-size: 20px;
+      margin-top: 0;
+      font-size: 18px;
       color: #00aaff;
     }
     #modMenu label {
-      display: flex;
-      align-items: center;
-      margin-bottom: 10px;
-      font-size: 14px;
-      cursor: pointer;
+      display: block;
+      margin-bottom: 8px;
     }
-    #modMenu input[type="checkbox"], #modMenu input[type="range"] {
-      margin-right: 8px;
-      flex-shrink: 0;
-    }
-    #aimFovCanvas {
-      position: absolute;
-      pointer-events: none;
-      top: 0; left: 0;
-      z-index: 25;
+    canvas {
+      display: block;
     }
   </style>
 </head>
 <body>
+  <div id="modMenu">
+    <h2>Mod Menu</h2>
+    <label><input type="checkbox" id="espToggle"> ESP</label>
+    <label><input type="checkbox" id="tracerToggle"> Tracers</label>
+    <label><input type="checkbox" id="aimbotToggle"> Aimbot</label>
+    <label>Aimbot FOV: <input type="range" id="fovSlider" min="30" max="180" value="90"></label>
+  </div>
+  <canvas id="aimFovCanvas"></canvas>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.125.2/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.125.2/examples/js/controls/PointerLockControls.js"></script>
+  <script>
+    // Key toggle for menu
+    const modMenu = document.getElementById('modMenu');
+    document.addEventListener('keydown', e => {
+      if (e.key === ';') {
+        modMenu.style.display = modMenu.style.display === 'none' ? 'block' : 'none';
+      }
+    });
 
-<!-- Start Screen -->
-<div id="startScreen">
-  <button id="startBtn">Start Game</button>
-  <p>Click to lock pointer and start</p>
-  <p style="font-size: 13px; opacity:0.7;">Toggle Mod Menu: Press 'P'</p>
-</div>
+    // Canvas for overlay (FOV)
+    const aimFovCanvas = document.getElementById('aimFovCanvas');
+    const aimFovCtx = aimFovCanvas.getContext('2d');
+    aimFovCanvas.width = window.innerWidth;
+    aimFovCanvas.height = window.innerHeight;
 
-<!-- Mod Menu -->
-<div id="modMenu">
-  <h2>Mod Menu</h2>
-  <label><input type="checkbox" id="espToggle" /> ESP (Boxes)</label>
-  <label><input type="checkbox" id="tracerToggle" /> Tracers</label>
-  <label><input type="checkbox" id="aimbotToggle" /> Aimbot</label>
-  <label style="flex-direction: column; align-items: flex-start;">
-    <span style="margin-bottom: 4px;">Aimbot FOV:</span>
-    <input type="range" id="aimFovSlider" min="30" max="200" value="100" />
-  </label>
-</div>
+    // THREE.js basic setup
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
 
-<!-- Canvas for drawing overlays -->
-<canvas id="aimFovCanvas"></canvas>
+    // Lighting
+    const light = new THREE.AmbientLight(0xffffff);
+    scene.add(light);
 
-<!-- Scripts -->
-<script src="https://cdn.jsdelivr.net/npm/three@0.125.2/build/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.125.2/examples/js/controls/PointerLockControls.js"></script>
-<script>
-  // Run the full improved game script
-  // [Your original JavaScript script from <script> to </script> goes here unchanged]
-</script>
+    // Player controls
+    const controls = new THREE.PointerLockControls(camera, document.body);
+    document.body.addEventListener('click', () => controls.lock());
+    scene.add(controls.getObject());
 
+    // Ground
+    const floorGeometry = new THREE.PlaneGeometry(100, 100);
+    const floorMaterial = new THREE.MeshBasicMaterial({color: 0x333333, side: THREE.DoubleSide});
+    const floor = new THREE.Mesh(floorGeometry, floorMaterial);
+    floor.rotation.x = Math.PI / 2;
+    scene.add(floor);
+
+    // Enemies
+    const enemies = [];
+    const enemyMaterial = new THREE.MeshBasicMaterial({color: 0xff0000});
+    for (let i = 0; i < 10; i++) {
+      const enemy = new THREE.Mesh(new THREE.BoxGeometry(1, 2, 1), enemyMaterial);
+      enemy.position.set(Math.random() * 50 - 25, 1, Math.random() * 50 - 25);
+      scene.add(enemy);
+      enemies.push(enemy);
+    }
+
+    // Mod toggles
+    const espToggle = document.getElementById('espToggle');
+    const tracerToggle = document.getElementById('tracerToggle');
+    const aimbotToggle = document.getElementById('aimbotToggle');
+    const fovSlider = document.getElementById('fovSlider');
+
+    // Draw ESP and tracers
+    const tempVec = new THREE.Vector3();
+    const projector = new THREE.Projector();
+    function drawOverlay() {
+      aimFovCtx.clearRect(0, 0, aimFovCanvas.width, aimFovCanvas.height);
+
+      // Draw FOV circle
+      const fov = parseInt(fovSlider.value);
+      aimFovCtx.beginPath();
+      aimFovCtx.arc(window.innerWidth / 2, window.innerHeight / 2, fov, 0, Math.PI * 2);
+      aimFovCtx.strokeStyle = 'rgba(0,255,255,0.5)';
+      aimFovCtx.stroke();
+
+      enemies.forEach(enemy => {
+        const vector = enemy.position.clone().project(camera);
+        const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
+        const y = (-vector.y * 0.5 + 0.5) * window.innerHeight;
+
+        if (espToggle.checked) {
+          aimFovCtx.strokeStyle = 'lime';
+          aimFovCtx.strokeRect(x - 10, y - 25, 20, 50);
+        }
+        if (tracerToggle.checked) {
+          aimFovCtx.strokeStyle = 'red';
+          aimFovCtx.beginPath();
+          aimFovCtx.moveTo(window.innerWidth / 2, window.innerHeight);
+          aimFovCtx.lineTo(x, y);
+          aimFovCtx.stroke();
+        }
+      });
+    }
+
+    // Aimbot logic
+    function aimbotUpdate() {
+      if (!aimbotToggle.checked || !controls.isLocked) return;
+      let closest = null;
+      let minDist = Infinity;
+      const fov = parseInt(fovSlider.value);
+
+      enemies.forEach(enemy => {
+        const vector = enemy.position.clone().project(camera);
+        const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
+        const y = (-vector.y * 0.5 + 0.5) * window.innerHeight;
+        const dx = x - window.innerWidth / 2;
+        const dy = y - window.innerHeight / 2;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < fov && dist < minDist) {
+          closest = enemy;
+          minDist = dist;
+        }
+      });
+
+      if (closest && mouseDown) {
+        const dir = closest.position.clone().sub(camera.position).normalize();
+        camera.lookAt(closest.position);
+      }
+    }
+
+    let mouseDown = false;
+    document.addEventListener('mousedown', (e) => {
+      if (e.button === 2) mouseDown = true;
+    });
+    document.addEventListener('mouseup', (e) => {
+      if (e.button === 2) mouseDown = false;
+    });
+
+    // Animation loop
+    function animate() {
+      requestAnimationFrame(animate);
+      drawOverlay();
+      aimbotUpdate();
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      aimFovCanvas.width = window.innerWidth;
+      aimFovCanvas.height = window.innerHeight;
+    });
+  </script>
 </body>
 </html>
