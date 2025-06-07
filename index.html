@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>3D FPS Game for GitHub Pages</title>
+  <title>3D FPS Game</title>
   <style>
     html, body {
       margin: 0;
@@ -44,9 +44,7 @@
 </head>
 <body>
   <div id="instructions">
-    Click here or press any key to lock pointer and start playing.
-    <br />
-    Press 'P' to toggle Mod Menu.
+    Click here or press any key to start playing.
   </div>
 
   <div id="modMenu">
@@ -77,25 +75,21 @@
     const controls = new THREE.PointerLockControls(camera, document.body);
     scene.add(controls.getObject());
 
-    // Instructions div
     const instructions = document.getElementById("instructions");
 
-    // Click or key to lock pointer and start game
-    function startGame() {
+    // Pointer lock must be requested inside user input event, so attach directly here:
+    instructions.addEventListener('click', () => {
       controls.lock();
-      instructions.style.display = 'none';
-      window.removeEventListener('click', startGame);
-      window.removeEventListener('keydown', startGame);
-    }
-    window.addEventListener('click', startGame);
-    window.addEventListener('keydown', startGame);
+    });
+    window.addEventListener('keydown', () => {
+      if (!controls.isLocked) controls.lock();
+    });
 
-    // Pointer lock events
+    // Show/hide instructions based on pointer lock state
     controls.addEventListener('lock', () => {
-      console.log("Pointer locked");
+      instructions.style.display = 'none';
     });
     controls.addEventListener('unlock', () => {
-      console.log("Pointer unlocked");
       instructions.style.display = '';
     });
 
@@ -156,7 +150,7 @@
     crosshair.position.z = -2;
     camera.add(crosshair);
 
-    // Aim FOV ring
+    // Aim FOV ring (can be hidden or removed if you want)
     const aimFOV = new THREE.Mesh(new THREE.RingGeometry(0.2, 0.21, 64), new THREE.MeshBasicMaterial({ color: 0x00ffff, side: THREE.DoubleSide }));
     aimFOV.position.z = -2;
     camera.add(aimFOV);
@@ -177,7 +171,7 @@
       }
     });
 
-    // Mod Menu
+    // Mod Menu (hidden by default, no UI hints)
     const modMenu = document.getElementById("modMenu");
     let espEnabled = false, tracersEnabled = false, aimbotEnabled = false;
 
@@ -187,11 +181,15 @@
 
     window.addEventListener('keydown', e => {
       if (e.key.toLowerCase() === 'p') {
-        modMenu.style.display = modMenu.style.display === 'none' ? 'block' : 'none';
+        if (modMenu.style.display === 'none' || modMenu.style.display === '') {
+          modMenu.style.display = 'block';
+        } else {
+          modMenu.style.display = 'none';
+        }
       }
     });
 
-    // Tracers and ESP helpers
+    // Helpers for ESP & tracers
     const tracerLines = [];
     const boxHelpers = [];
 
@@ -202,7 +200,7 @@
       boxHelpers.length = 0;
     }
 
-    // Animation loop
+    // Main animation loop
     function animate() {
       requestAnimationFrame(animate);
 
@@ -229,9 +227,8 @@
       // Respawn player if dead
       if (playerHealth <= 0) respawnPlayer();
 
-      // Aimbot
+      // Aimbot logic
       if (aimbotEnabled && enemies.length > 0) {
-        // Find closest enemy
         let closest = null;
         let closestDist = Infinity;
         const playerPos = controls.getObject().position;
@@ -243,15 +240,12 @@
           }
         }
         if (closest) {
-          // Smoothly look at enemy
-          const targetPos = closest.position.clone();
-          camera.lookAt(targetPos);
+          camera.lookAt(closest.position);
         }
       }
 
       clearHelpers();
 
-      // ESP and tracers
       enemies.forEach(enemy => {
         if (espEnabled) {
           const boxHelper = new THREE.BoxHelper(enemy, 0xffff00);
@@ -273,7 +267,6 @@
 
     animate();
 
-    // Window resize handling
     window.addEventListener('resize', () => {
       camera.aspect = window.innerWidth/window.innerHeight;
       camera.updateProjectionMatrix();
