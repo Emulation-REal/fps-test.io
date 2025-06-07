@@ -4,12 +4,34 @@
 <meta charset="UTF-8" />
 <title>FPS Target Practice with Aimbot</title>
 <style>
-  body,html { margin:0; overflow:hidden; height:100%; background:#111;}
+  body,html { margin:0; overflow:hidden; height:100%; background:#111; }
   canvas { display: block; }
-  #overlay {
+  #overlay, #startScreen {
     position: absolute;
-    top:0; left:0; pointer-events:none;
-    width: 100%; height: 100%;
+    top:0; left:0; width:100%; height:100%;
+    pointer-events:none;
+  }
+  #startScreen {
+    background: rgba(0,0,0,0.85);
+    color: white;
+    font-family: monospace;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+    user-select:none;
+    pointer-events:auto;
+    z-index: 10;
+  }
+  #startButton {
+    padding: 15px 30px;
+    background: #0077ff;
+    border: none;
+    font-size: 20px;
+    color: white;
+    cursor: pointer;
+    border-radius: 5px;
+    user-select:none;
   }
   #fovCircle {
     position: absolute;
@@ -17,6 +39,7 @@
     border-radius: 50%;
     pointer-events:none;
     display:none;
+    z-index: 5;
   }
   #modMenu {
     position: absolute;
@@ -28,6 +51,7 @@
     font-size: 14px;
     display:none;
     user-select:none;
+    z-index: 5;
   }
   #modMenu label {
     display: block;
@@ -37,6 +61,11 @@
 </style>
 </head>
 <body>
+
+<div id="startScreen">
+  <div>Click the button below to start</div>
+  <button id="startButton">Start Game</button>
+</div>
 
 <div id="overlay"></div>
 <div id="fovCircle"></div>
@@ -52,28 +81,38 @@
 
 <script>
 (() => {
+  const startScreen = document.getElementById('startScreen');
+  const startButton = document.getElementById('startButton');
+
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
   const renderer = new THREE.WebGLRenderer({antialias:true});
   renderer.setSize(window.innerWidth, window.innerHeight);
   document.body.appendChild(renderer.domElement);
 
-  // Controls setup (PointerLockControls)
   const controls = new THREE.PointerLockControls(camera, document.body);
 
-  // Click to lock pointer for FPS controls
-  document.body.addEventListener('click', () => {
-    if (!controls.isLocked) controls.lock();
+  // Start game when start button clicked
+  startButton.addEventListener('click', () => {
+    controls.lock();
   });
 
-  // Simple floor
+  // When pointer locked, hide start screen and enable game
+  controls.addEventListener('lock', () => {
+    startScreen.style.display = 'none';
+  });
+  controls.addEventListener('unlock', () => {
+    startScreen.style.display = 'flex';
+  });
+
+  // Floor
   const floorGeometry = new THREE.PlaneGeometry(100, 100);
   const floorMaterial = new THREE.MeshPhongMaterial({color:0x222222});
   const floor = new THREE.Mesh(floorGeometry, floorMaterial);
   floor.rotation.x = -Math.PI/2;
   scene.add(floor);
 
-  // Obstacles (boxes)
+  // Obstacles
   const obstacles = [];
   const obstacleGeom = new THREE.BoxGeometry(4, 4, 4);
   const obstacleMat = new THREE.MeshPhongMaterial({color: 0x555555});
@@ -88,7 +127,7 @@
     obstacles.push(obs);
   }
 
-  // Light
+  // Lights
   const ambientLight = new THREE.AmbientLight(0x666666);
   scene.add(ambientLight);
   const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
@@ -99,26 +138,23 @@
   class Enemy {
     constructor() {
       this.group = new THREE.Group();
-      // simple sphere for enemy head
       const headGeom = new THREE.SphereGeometry(1, 12, 12);
       const headMat = new THREE.MeshBasicMaterial({color:0xff4444});
       this.head = new THREE.Mesh(headGeom, headMat);
       this.group.add(this.head);
 
-      // simple box for body
       const bodyGeom = new THREE.BoxGeometry(1.5, 2, 1);
       const bodyMat = new THREE.MeshBasicMaterial({color:0xaa2222});
       this.body = new THREE.Mesh(bodyGeom, bodyMat);
       this.body.position.y = -1.5;
       this.group.add(this.body);
 
-      // start position
       this.group.position.set(
         (Math.random()-0.5)*70,
         1,
         (Math.random()-0.5)*70
       );
-      this.speed = 1 + Math.random(); // movement speed
+      this.speed = 1 + Math.random();
       this.direction = new THREE.Vector3(
         (Math.random()-0.5),
         0,
@@ -127,14 +163,11 @@
       scene.add(this.group);
     }
     update(delta) {
-      // Move enemy in direction
       this.group.position.add(this.direction.clone().multiplyScalar(this.speed * delta));
 
-      // Bounce from map edges (-50 to 50)
       if(this.group.position.x > 50 || this.group.position.x < -50) this.direction.x *= -1;
       if(this.group.position.z > 50 || this.group.position.z < -50) this.direction.z *= -1;
 
-      // Simple obstacle avoidance - reverse direction if close
       for(let obs of obstacles) {
         const dist = obs.position.distanceTo(this.group.position);
         if(dist < 4) {
@@ -157,44 +190,27 @@
   gun.add(gunBody);
   scene.add(gun);
 
-  // Position gun relative to camera
   function updateGunPosition() {
     const camPos = camera.position.clone();
     const camDir = new THREE.Vector3();
     camera.getWorldDirection(camDir);
-    // Offset to right + down
     const right = new THREE.Vector3();
-    camera.getWorldDirection(camDir);
     right.crossVectors(camera.up, camDir).normalize();
     gun.position.copy(camPos).add(right.multiplyScalar(-0.5)).add(new THREE.Vector3(0,-0.3,0));
-    // Point forward same as camera
     gun.lookAt(camPos.clone().add(camDir.multiplyScalar(10)));
   }
 
-  // Controls state
   const keys = {};
   window.addEventListener('keydown', (e) => keys[e.code] = true);
   window.addEventListener('keyup', (e) => keys[e.code] = false);
 
-  // Aiming state (right mouse button)
   let isAiming = false;
-  window.addEventListener('mousedown', e => {
-    if(e.button === 2) isAiming = true;
-  });
-  window.addEventListener('mouseup', e => {
-    if(e.button === 2) isAiming = false;
-  });
-
-  // Prevent context menu on right-click
+  window.addEventListener('mousedown', e => { if(e.button === 2) isAiming = true; });
+  window.addEventListener('mouseup', e => { if(e.button === 2) isAiming = false; });
   window.addEventListener('contextmenu', e => e.preventDefault());
 
-  // Player movement speed
   const speed = 15;
 
-  // Raycaster for aiming and aimbot
-  const raycaster = new THREE.Raycaster();
-
-  // Overlay canvas for ESP and tracers
   const overlay = document.getElementById('overlay');
   const overlayCanvas = document.createElement('canvas');
   overlayCanvas.width = window.innerWidth;
@@ -202,11 +218,9 @@
   overlay.appendChild(overlayCanvas);
   const overlayCtx = overlayCanvas.getContext('2d');
 
-  // FOV circle for visual aimbot
   const fovCircle = document.getElementById('fovCircle');
-  const fovRadius = 150; // pixels radius for aimbot FOV circle
+  const fovRadius = 150;
 
-  // Mod menu and toggles
   const modMenu = document.getElementById('modMenu');
   const toggleAimbot = document.getElementById('toggleAimbot');
   const toggleESP = document.getElementById('toggleESP');
@@ -220,16 +234,13 @@
     }
   });
 
-  // Main update loop
   const clock = new THREE.Clock();
 
   function animate() {
     requestAnimationFrame(animate);
-
     const delta = clock.getDelta();
 
     if (controls.isLocked) {
-      // Movement
       let dir = new THREE.Vector3();
       if(keys['KeyW']) dir.z -= 1;
       if(keys['KeyS']) dir.z += 1;
@@ -239,40 +250,33 @@
       if(dir.length() > 0) {
         const moveVector = dir.clone().applyQuaternion(camera.quaternion).multiplyScalar(speed * delta);
         controls.getObject().position.add(moveVector);
-        // Clamp player inside map boundaries (-48 to 48)
         controls.getObject().position.x = THREE.MathUtils.clamp(controls.getObject().position.x, -48, 48);
         controls.getObject().position.z = THREE.MathUtils.clamp(controls.getObject().position.z, -48, 48);
       }
     }
 
-    // Update enemies
     enemies.forEach(enemy => enemy.update(delta));
 
-    // Update gun position/rotation
     updateGunPosition();
 
-    // Draw overlay ESP/tracers/fov circle
     overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
 
     if (toggleESP.checked || toggleTracers.checked) {
       enemies.forEach(enemy => {
-        // Project enemy position to 2D screen
         const enemyPos = enemy.group.position.clone();
-        enemyPos.y += 1.5; // target approx head height
+        enemyPos.y += 1.5;
         const vector = enemyPos.project(camera);
         const x = (vector.x * 0.5 + 0.5) * overlayCanvas.width;
         const y = (-vector.y * 0.5 + 0.5) * overlayCanvas.height;
 
-        if (vector.z > 1 || vector.z < 0) return; // behind camera or too far
+        if (vector.z > 1 || vector.z < 0) return;
 
         if (toggleESP.checked) {
-          // Draw box around enemy (simple fixed size)
           overlayCtx.strokeStyle = 'red';
           overlayCtx.lineWidth = 2;
           overlayCtx.strokeRect(x - 20, y - 40, 40, 60);
         }
         if (toggleTracers.checked) {
-          // Draw line from bottom center to enemy
           overlayCtx.strokeStyle = 'lime';
           overlayCtx.lineWidth = 1;
           overlayCtx.beginPath();
@@ -283,7 +287,6 @@
       });
     }
 
-    // Visual aimbot FOV circle
     if (isAiming && toggleAimbot.checked) {
       fovCircle.style.display = 'block';
       fovCircle.style.width = fovRadius * 2 + 'px';
@@ -294,9 +297,7 @@
       fovCircle.style.display = 'none';
     }
 
-    // Aimbot targeting
     if (isAiming && toggleAimbot.checked) {
-      // Find closest enemy inside FOV circle
       let bestEnemy = null;
       let bestDist = fovRadius;
 
@@ -309,7 +310,6 @@
 
         if (vector.z > 1 || vector.z < 0) return;
 
-        // Distance from screen center
         const dist = Math.hypot(x - overlayCanvas.width/2, y - overlayCanvas.height/2);
         if(dist < bestDist) {
           bestDist = dist;
@@ -318,34 +318,27 @@
       });
 
       if(bestEnemy) {
-        // Aim camera smoothly at enemy
         const enemyPos = bestEnemy.group.position.clone();
         enemyPos.y += 1.5;
 
         const playerPos = controls.getObject().position.clone().add(new THREE.Vector3(0,1.6,0));
         const targetDir = enemyPos.clone().sub(playerPos).normalize();
 
-        // Calculate target yaw and pitch
         const targetYaw = Math.atan2(targetDir.x, targetDir.z);
         const targetPitch = Math.asin(targetDir.y);
 
-        // Current camera rotation (Euler)
         const camEuler = new THREE.Euler().setFromQuaternion(camera.quaternion, 'YXZ');
 
-        // Smoothly interpolate yaw and pitch
         const lerpFactor = 0.15;
         let newYaw = THREE.MathUtils.lerpAngle(camEuler.y, targetYaw, lerpFactor);
         let newPitch = THREE.MathUtils.lerp(camEuler.x, targetPitch, lerpFactor);
 
-        // Clamp pitch so you don't flip over (look up/down)
         newPitch = THREE.MathUtils.clamp(newPitch, -Math.PI/2, Math.PI/2);
 
         camEuler.y = newYaw;
         camEuler.x = newPitch;
 
         camera.quaternion.setFromEuler(camEuler);
-
-        // Also update controls target so the pointer lock yaw/pitch is synced
         controls.getObject().rotation.y = newYaw;
       }
     }
@@ -355,7 +348,6 @@
 
   animate();
 
-  // Resize handler
   window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth/window.innerHeight;
     camera.updateProjectionMatrix();
