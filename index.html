@@ -1,191 +1,439 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>3D FPS Game with Mod Menu</title>
-  <style>
-    html, body {
-      margin: 0;
-      padding: 0;
-      height: 100%;
-      overflow: hidden;
-      background: #222;
-      color: #eee;
-      font-family: Arial, sans-serif;
-    }
-    #modMenu {
-      position: absolute;
-      top: 10px;
-      right: 10px;
-      background: rgba(0,0,0,0.7);
-      border: 1px solid #00f;
-      border-radius: 8px;
-      padding: 10px;
-      width: 200px;
-      z-index: 10;
-      display: none;
-    }
-    #modMenu h2 {
-      margin-top: 0;
-      font-size: 18px;
-      color: #00aaff;
-    }
-    #modMenu label {
-      display: block;
-      margin-bottom: 8px;
-    }
-    canvas {
-      display: block;
-    }
-  </style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Realistic 3D FPS with Mods</title>
+<style>
+  html, body {
+    margin:0; padding:0; overflow:hidden; height:100%;
+    background:#121212;
+    color:#eee;
+    font-family: Arial, sans-serif;
+  }
+  #startScreen {
+    position: absolute;
+    top:50%; left:50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    user-select: none;
+    z-index: 10;
+  }
+  #startBtn {
+    font-size: 28px;
+    padding: 16px 50px;
+    cursor: pointer;
+    background: #0078d7;
+    border: none;
+    border-radius: 8px;
+    color: white;
+  }
+  #modMenu {
+    position: absolute;
+    top: 10px; right: 10px;
+    width: 230px;
+    background: rgba(0,0,0,0.85);
+    border: 1px solid #00aaff;
+    border-radius: 8px;
+    padding: 12px 15px;
+    z-index: 20;
+    display: none;
+    user-select: none;
+    font-size: 14px;
+  }
+  #modMenu h2 {
+    margin: 0 0 10px;
+    font-weight: normal;
+    color: #00aaff;
+  }
+  #modMenu label {
+    display: flex;
+    align-items: center;
+    margin-bottom: 8px;
+    cursor: pointer;
+  }
+  #modMenu input[type="checkbox"] {
+    margin-right: 8px;
+  }
+  #modMenu input[type="range"] {
+    margin-left: 10px;
+    flex-grow: 1;
+  }
+  canvas#aimFovCanvas {
+    position: absolute;
+    pointer-events: none;
+    top: 0; left: 0;
+    z-index: 15;
+  }
+</style>
 </head>
 <body>
-  <div id="modMenu">
-    <h2>Mod Menu</h2>
-    <label><input type="checkbox" id="espToggle"> ESP</label>
-    <label><input type="checkbox" id="tracerToggle"> Tracers</label>
-    <label><input type="checkbox" id="aimbotToggle"> Aimbot</label>
-    <label>Aimbot FOV: <input type="range" id="fovSlider" min="30" max="180" value="90"></label>
-  </div>
-  <canvas id="aimFovCanvas"></canvas>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.125.2/build/three.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.125.2/examples/js/controls/PointerLockControls.js"></script>
-  <script>
-    // Key toggle for menu
-    const modMenu = document.getElementById('modMenu');
-    document.addEventListener('keydown', e => {
-      if (e.key === ';') {
-        modMenu.style.display = modMenu.style.display === 'none' ? 'block' : 'none';
-      }
-    });
 
-    // Canvas for overlay (FOV)
-    const aimFovCanvas = document.getElementById('aimFovCanvas');
-    const aimFovCtx = aimFovCanvas.getContext('2d');
+<div id="startScreen">
+  <button id="startBtn">Click to Start & Lock Pointer</button>
+  <p style="opacity:0.7; margin-top:10px;">Press ";" to toggle Mod Menu</p>
+  <p style="opacity:0.5; font-size:12px;">Hold Right Mouse Button to Aim (Aimbot active only when aiming)</p>
+</div>
+
+<div id="modMenu">
+  <h2>Mod Menu</h2>
+  <label><input type="checkbox" id="espToggle" /> ESP (Boxes)</label>
+  <label><input type="checkbox" id="tracerToggle" /> Tracers</label>
+  <label><input type="checkbox" id="aimbotToggle" /> Aimbot</label>
+  <label style="margin-top:8px;">Aimbot FOV:
+    <input type="range" id="aimFovSlider" min="30" max="200" value="100" />
+  </label>
+</div>
+
+<canvas id="aimFovCanvas"></canvas>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.152.2/examples/js/controls/PointerLockControls.js"></script>
+
+<script>
+(() => {
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+  const renderer = new THREE.WebGLRenderer({antialias:true});
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  document.body.appendChild(renderer.domElement);
+
+  // Lighting
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+  scene.add(ambientLight);
+  const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+  directionalLight.position.set(5,10,7);
+  scene.add(directionalLight);
+
+  // Floor - realistic texture color
+  const floorGeometry = new THREE.PlaneGeometry(50, 50);
+  const floorMaterial = new THREE.MeshStandardMaterial({color: 0x555555});
+  const floor = new THREE.Mesh(floorGeometry, floorMaterial);
+  floor.rotation.x = -Math.PI/2;
+  floor.receiveShadow = true;
+  scene.add(floor);
+
+  // Walls (box geometry) with collision boxes
+  const walls = [];
+  const wallBoxes = []; // for collisions
+
+  function addWall(x, y, z, w, h, d, color=0x444444) {
+    const geometry = new THREE.BoxGeometry(w, h, d);
+    const material = new THREE.MeshStandardMaterial({color, roughness:0.8});
+    const wall = new THREE.Mesh(geometry, material);
+    wall.position.set(x, y, z);
+    wall.castShadow = true;
+    wall.receiveShadow = true;
+    scene.add(wall);
+    walls.push(wall);
+    // Create collision box (AABB)
+    const box = new THREE.Box3().setFromObject(wall);
+    wallBoxes.push(box);
+  }
+
+  // Add walls around edges - like a room
+  const wallHeight = 3;
+  const wallThickness = 1;
+  const halfMapSize = 25;
+
+  // Back wall
+  addWall(0, wallHeight/2, -halfMapSize, 50, wallHeight, wallThickness);
+  // Front wall
+  addWall(0, wallHeight/2, halfMapSize, 50, wallHeight, wallThickness);
+  // Left wall
+  addWall(-halfMapSize, wallHeight/2, 0, wallThickness, wallHeight, 50);
+  // Right wall
+  addWall(halfMapSize, wallHeight/2, 0, wallThickness, wallHeight, 50);
+
+  // Add some internal walls for hiding spots
+  addWall(-8, wallHeight/2, -5, 10, wallHeight, wallThickness, 0x666666);
+  addWall(8, wallHeight/2, 7, 12, wallHeight, wallThickness, 0x666666);
+  addWall(0, wallHeight/2, 12, 15, wallHeight, wallThickness, 0x666666);
+
+  // Player setup
+  const player = {
+    height: 1.8,
+    velocity: new THREE.Vector3(),
+    speed: 5,
+    canJump: false,
+    box: new THREE.Box3(),
+    position: new THREE.Vector3(0, 1.8/2, 0)
+  };
+
+  // Set initial camera position
+  camera.position.set(0, player.height, 5);
+
+  // PointerLockControls for FPS style look/move
+  const controls = new THREE.PointerLockControls(camera, document.body);
+
+  // Movement controls
+  const move = {forward:false, backward:false, left:false, right:false};
+  let prevTime = performance.now();
+
+  // Key controls
+  function onKeyDown(e) {
+    switch(e.code) {
+      case 'ArrowUp':
+      case 'KeyW': move.forward = true; break;
+      case 'ArrowLeft':
+      case 'KeyA': move.left = true; break;
+      case 'ArrowDown':
+      case 'KeyS': move.backward = true; break;
+      case 'ArrowRight':
+      case 'KeyD': move.right = true; break;
+    }
+  }
+  function onKeyUp(e) {
+    switch(e.code) {
+      case 'ArrowUp':
+      case 'KeyW': move.forward = false; break;
+      case 'ArrowLeft':
+      case 'KeyA': move.left = false; break;
+      case 'ArrowDown':
+      case 'KeyS': move.backward = false; break;
+      case 'ArrowRight':
+      case 'KeyD': move.right = false; break;
+    }
+  }
+  window.addEventListener('keydown', onKeyDown);
+  window.addEventListener('keyup', onKeyUp);
+
+  // Collision detection helper: check if player's box collides with any wall boxes
+  function checkCollisions(newPos) {
+    const playerBox = new THREE.Box3(
+      new THREE.Vector3(newPos.x - 0.3, 0, newPos.z - 0.3),
+      new THREE.Vector3(newPos.x + 0.3, player.height, newPos.z + 0.3)
+    );
+    for(const wallBox of wallBoxes) {
+      if(playerBox.intersectsBox(wallBox)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // Simple enemies to test ESP, tracers, aimbot
+  const enemies = [];
+  const enemyMeshes = [];
+  const enemyCount = 5;
+
+  for(let i=0; i<enemyCount; i++) {
+    const geometry = new THREE.CylinderGeometry(0.3, 0.3, 1.8, 16);
+    const material = new THREE.MeshStandardMaterial({color:0xff4444});
+    const enemy = new THREE.Mesh(geometry, material);
+    enemy.position.set(
+      (Math.random() - 0.5) * 40,
+      0.9,
+      (Math.random() - 0.5) * 40
+    );
+    scene.add(enemy);
+    enemies.push(enemy);
+  }
+
+  // Mod menu elements
+  const modMenu = document.getElementById('modMenu');
+  const espToggle = document.getElementById('espToggle');
+  const tracerToggle = document.getElementById('tracerToggle');
+  const aimbotToggle = document.getElementById('aimbotToggle');
+  const aimFovSlider = document.getElementById('aimFovSlider');
+
+  // Aim variables
+  let isAiming = false;
+  window.addEventListener('mousedown', (e) => {
+    if(e.button === 2) isAiming = true; // right mouse button down
+  });
+  window.addEventListener('mouseup', (e) => {
+    if(e.button === 2) isAiming = false; // right mouse button up
+  });
+
+  // Toggle mod menu by pressing ";"
+  window.addEventListener('keydown', (e) => {
+    if(e.key === ';') {
+      if(modMenu.style.display === 'none' || modMenu.style.display === '') {
+        modMenu.style.display = 'block';
+      } else {
+        modMenu.style.display = 'none';
+      }
+    }
+  });
+
+  // Aim FOV canvas to draw circle in center
+  const aimFovCanvas = document.getElementById('aimFovCanvas');
+  const aimFovCtx = aimFovCanvas.getContext('2d');
+
+  function resizeCanvas() {
     aimFovCanvas.width = window.innerWidth;
     aimFovCanvas.height = window.innerHeight;
+  }
+  window.addEventListener('resize', resizeCanvas);
+  resizeCanvas();
 
-    // THREE.js basic setup
-    const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-    const renderer = new THREE.WebGLRenderer();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    document.body.appendChild(renderer.domElement);
+  // Utility: convert 3D world position to 2D screen position
+  function toScreenPosition(pos) {
+    const vector = pos.clone().project(camera);
+    return {
+      x: (vector.x + 1) / 2 * window.innerWidth,
+      y: (-vector.y + 1) / 2 * window.innerHeight,
+      z: vector.z
+    };
+  }
 
-    // Lighting
-    const light = new THREE.AmbientLight(0xffffff);
-    scene.add(light);
+  // Render loop
+  function animate() {
+    requestAnimationFrame(animate);
 
-    // Player controls
-    const controls = new THREE.PointerLockControls(camera, document.body);
-    document.body.addEventListener('click', () => controls.lock());
-    scene.add(controls.getObject());
+    if(controls.isLocked === true) {
+      const time = performance.now();
+      const delta = (time - prevTime) / 1000;
 
-    // Ground
-    const floorGeometry = new THREE.PlaneGeometry(100, 100);
-    const floorMaterial = new THREE.MeshBasicMaterial({color: 0x333333, side: THREE.DoubleSide});
-    const floor = new THREE.Mesh(floorGeometry, floorMaterial);
-    floor.rotation.x = Math.PI / 2;
-    scene.add(floor);
+      // Calculate direction vector
+      const velocity = new THREE.Vector3();
+      if(move.forward) velocity.z -= 1;
+      if(move.backward) velocity.z += 1;
+      if(move.left) velocity.x -= 1;
+      if(move.right) velocity.x += 1;
+      velocity.normalize();
+      velocity.multiplyScalar(player.speed * delta);
 
-    // Enemies
-    const enemies = [];
-    const enemyMaterial = new THREE.MeshBasicMaterial({color: 0xff0000});
-    for (let i = 0; i < 10; i++) {
-      const enemy = new THREE.Mesh(new THREE.BoxGeometry(1, 2, 1), enemyMaterial);
-      enemy.position.set(Math.random() * 50 - 25, 1, Math.random() * 50 - 25);
-      scene.add(enemy);
-      enemies.push(enemy);
+      // Apply camera rotation to movement vector
+      const euler = new THREE.Euler(0, camera.rotation.y, 0);
+      velocity.applyEuler(euler);
+
+      // Calculate new proposed position
+      const newPos = player.position.clone().add(velocity);
+
+      // Check collision; if no collision update position
+      if(!checkCollisions(newPos)) {
+        player.position.copy(newPos);
+        controls.getObject().position.copy(player.position);
+        controls.getObject().position.y = player.height;
+      }
+
+      prevTime = time;
     }
 
-    // Mod toggles
-    const espToggle = document.getElementById('espToggle');
-    const tracerToggle = document.getElementById('tracerToggle');
-    const aimbotToggle = document.getElementById('aimbotToggle');
-    const fovSlider = document.getElementById('fovSlider');
+    renderer.render(scene, camera);
 
-    // Draw ESP and tracers
-    const tempVec = new THREE.Vector3();
-    const projector = new THREE.Projector();
-    function drawOverlay() {
-      aimFovCtx.clearRect(0, 0, aimFovCanvas.width, aimFovCanvas.height);
+    drawModOverlays();
+  }
 
-      // Draw FOV circle
-      const fov = parseInt(fovSlider.value);
+  // Draw ESP, tracers, and aimbot FOV circle on overlay canvas
+  function drawModOverlays() {
+    aimFovCtx.clearRect(0, 0, aimFovCanvas.width, aimFovCanvas.height);
+
+    // Draw aimbot FOV circle if aimbot enabled and aiming
+    if(aimbotToggle.checked && isAiming) {
+      const fovRadius = aimFovSlider.value;
+      aimFovCtx.strokeStyle = 'rgba(0, 170, 255, 0.7)';
+      aimFovCtx.lineWidth = 2;
       aimFovCtx.beginPath();
-      aimFovCtx.arc(window.innerWidth / 2, window.innerHeight / 2, fov, 0, Math.PI * 2);
-      aimFovCtx.strokeStyle = 'rgba(0,255,255,0.5)';
+      aimFovCtx.arc(window.innerWidth/2, window.innerHeight/2, fovRadius, 0, Math.PI*2);
       aimFovCtx.stroke();
+    }
 
+    // Draw ESP boxes and tracers
+    if(espToggle.checked || tracerToggle.checked) {
       enemies.forEach(enemy => {
-        const vector = enemy.position.clone().project(camera);
-        const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
-        const y = (-vector.y * 0.5 + 0.5) * window.innerHeight;
+        // Get enemy top and bottom positions in screen coords
+        const enemyPos = enemy.position.clone();
+        const topPos = enemyPos.clone().add(new THREE.Vector3(0, 0.9, 0)); // half height
 
-        if (espToggle.checked) {
-          aimFovCtx.strokeStyle = 'lime';
-          aimFovCtx.strokeRect(x - 10, y - 25, 20, 50);
-        }
-        if (tracerToggle.checked) {
-          aimFovCtx.strokeStyle = 'red';
-          aimFovCtx.beginPath();
-          aimFovCtx.moveTo(window.innerWidth / 2, window.innerHeight);
-          aimFovCtx.lineTo(x, y);
-          aimFovCtx.stroke();
+        const screenBottom = toScreenPosition(enemyPos);
+        const screenTop = toScreenPosition(topPos);
+
+        if(screenBottom.z < 1) {
+          // Draw ESP box
+          if(espToggle.checked) {
+            const height = Math.abs(screenTop.y - screenBottom.y);
+            const width = height/2;
+            const x = screenBottom.x - width/2;
+            const y = screenTop.y;
+
+            aimFovCtx.strokeStyle = 'rgba(0,255,0,0.8)';
+            aimFovCtx.lineWidth = 2;
+            aimFovCtx.strokeRect(x, y, width, height);
+          }
+
+          // Draw tracers
+          if(tracerToggle.checked) {
+            aimFovCtx.strokeStyle = 'rgba(255, 0, 0, 0.6)';
+            aimFovCtx.lineWidth = 1.5;
+            aimFovCtx.beginPath();
+            aimFovCtx.moveTo(window.innerWidth/2, window.innerHeight);
+            aimFovCtx.lineTo(screenBottom.x, screenBottom.y);
+            aimFovCtx.stroke();
+          }
         }
       });
     }
 
-    // Aimbot logic
-    function aimbotUpdate() {
-      if (!aimbotToggle.checked || !controls.isLocked) return;
-      let closest = null;
-      let minDist = Infinity;
-      const fov = parseInt(fovSlider.value);
+    // Aimbot logic - if enabled and aiming, find closest enemy in FOV and aim at them smoothly
+    if(aimbotToggle.checked && isAiming && controls.isLocked) {
+      const fovRadius = aimFovSlider.value;
+      let closestEnemy = null;
+      let closestDist = fovRadius * fovRadius;
 
       enemies.forEach(enemy => {
-        const vector = enemy.position.clone().project(camera);
-        const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
-        const y = (-vector.y * 0.5 + 0.5) * window.innerHeight;
-        const dx = x - window.innerWidth / 2;
-        const dy = y - window.innerHeight / 2;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < fov && dist < minDist) {
-          closest = enemy;
-          minDist = dist;
+        const pos = toScreenPosition(enemy.position.clone().add(new THREE.Vector3(0,0.9,0)));
+        if(pos.z < 1) {
+          const dx = pos.x - window.innerWidth/2;
+          const dy = pos.y - window.innerHeight/2;
+          const distSq = dx*dx + dy*dy;
+          if(distSq < closestDist) {
+            closestDist = distSq;
+            closestEnemy = enemy;
+          }
         }
       });
 
-      if (closest && mouseDown) {
-        const dir = closest.position.clone().sub(camera.position).normalize();
-        camera.lookAt(closest.position);
+      if(closestEnemy) {
+        // Calculate vector to enemy from camera
+        const targetPos = closestEnemy.position.clone().add(new THREE.Vector3(0,0.9,0));
+        // Convert to local space for camera rotation
+        const camPos = camera.position.clone();
+        const dirToTarget = targetPos.clone().sub(camPos).normalize();
+
+        // Calculate target yaw and pitch
+        const targetYaw = Math.atan2(dirToTarget.x, dirToTarget.z);
+        const targetPitch = Math.asin(dirToTarget.y);
+
+        // Smoothly rotate camera rotation.y (yaw) and rotation.x (pitch) toward target
+        const lerpFactor = 0.15;
+
+        // Clamp pitch between -PI/2 and PI/2 to avoid flipping
+        camera.rotation.y += (targetYaw - camera.rotation.y) * lerpFactor;
+        camera.rotation.x += (targetPitch - camera.rotation.x) * lerpFactor;
+        camera.rotation.x = Math.min(Math.max(camera.rotation.x, -Math.PI/2), Math.PI/2);
       }
     }
+  }
 
-    let mouseDown = false;
-    document.addEventListener('mousedown', (e) => {
-      if (e.button === 2) mouseDown = true;
-    });
-    document.addEventListener('mouseup', (e) => {
-      if (e.button === 2) mouseDown = false;
-    });
+  // Start pointer lock and game on button click
+  const startScreen = document.getElementById('startScreen');
+  const startBtn = document.getElementById('startBtn');
+  startBtn.addEventListener('click', () => {
+    controls.lock();
+  });
 
-    // Animation loop
-    function animate() {
-      requestAnimationFrame(animate);
-      drawOverlay();
-      aimbotUpdate();
-      renderer.render(scene, camera);
-    }
+  controls.addEventListener('lock', () => {
+    startScreen.style.display = 'none';
+    controls.getObject().position.copy(player.position);
     animate();
+  });
+  controls.addEventListener('unlock', () => {
+    startScreen.style.display = 'block';
+  });
 
-    window.addEventListener('resize', () => {
-      camera.aspect = window.innerWidth / window.innerHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(window.innerWidth, window.innerHeight);
-      aimFovCanvas.width = window.innerWidth;
-      aimFovCanvas.height = window.innerHeight;
-    });
-  </script>
+  // On resize update renderer and camera aspect
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth/window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    resizeCanvas();
+  });
+
+})();
+</script>
+
 </body>
 </html>
