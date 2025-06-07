@@ -2,114 +2,117 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Moddable FPS Game</title>
+  <title>3D FPS Game</title>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body { width: 100%; height: 100%; overflow: hidden; background: #111; }
-    canvas { display: block; background: #222; }
-    .esp-box {
-      position: absolute;
-      border: 2px solid red;
-      width: 40px; height: 60px;
-      pointer-events: none;
+    body, html {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: #000;
     }
-    #modMenu {
-      position: absolute;
-      top: 10px; right: 10px;
-      background: rgba(0,0,0,0.8);
-      padding: 10px;
-      color: white;
-      font-family: sans-serif;
-      border-radius: 8px;
+    canvas {
+      display: block;
     }
-    #modMenu h3 { margin-bottom: 8px; }
   </style>
 </head>
 <body>
-  <canvas id="gameCanvas"></canvas>
-  <div id="modMenu">
-    <h3>Mod Menu</h3>
-    <label><input type="checkbox" id="toggleESP"> ESP</label><br>
-  </div>
-
+  <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/controls/PointerLockControls.js"></script>
   <script>
-    const canvas = document.getElementById("gameCanvas");
-    const ctx = canvas.getContext("2d");
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
+    // Basic setup
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
 
-    const player = { x: 100, y: 100, size: 20, speed: 3 };
-    const enemies = [];
-    const obstacles = [];
+    // Lighting
+    const light = new THREE.DirectionalLight(0xffffff, 1);
+    light.position.set(10, 20, 10);
+    scene.add(light);
+    scene.add(new THREE.AmbientLight(0x404040));
 
+    // Floor
+    const floorGeometry = new THREE.PlaneGeometry(100, 100);
+    const floorMaterial = new THREE.MeshStandardMaterial({ color: 0x333333 });
+    const floor = new THREE.Mesh(floorGeometry, floorMaterial);
+    floor.rotation.x = -Math.PI / 2;
+    scene.add(floor);
+
+    // Pointer Lock Controls
+    const controls = new THREE.PointerLockControls(camera, document.body);
+    document.body.addEventListener('click', () => controls.lock());
+    scene.add(controls.getObject());
+
+    // Movement controls
+    const velocity = new THREE.Vector3();
+    const direction = new THREE.Vector3();
     const keys = {};
-    let useESP = false;
+    document.addEventListener('keydown', (e) => keys[e.code] = true);
+    document.addEventListener('keyup', (e) => keys[e.code] = false);
 
-    // Toggle ESP
-    document.getElementById("toggleESP").onchange = e => {
-      useESP = e.target.checked;
-    };
+    // Gun
+    const gunGeometry = new THREE.BoxGeometry(0.2, 0.1, 1);
+    const gunMaterial = new THREE.MeshStandardMaterial({ color: 0x00ff00 });
+    const gun = new THREE.Mesh(gunGeometry, gunMaterial);
+    gun.position.set(0.2, -0.2, -1);
+    camera.add(gun);
 
-    // Movement input
-    window.addEventListener("keydown", e => keys[e.key] = true);
-    window.addEventListener("keyup", e => keys[e.key] = false);
-
-    // Generate enemies
+    // Obstacles
+    const obstacles = [];
     for (let i = 0; i < 10; i++) {
-      enemies.push({ x: Math.random() * canvas.width, y: Math.random() * canvas.height, size: 20 });
+      const box = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 2), new THREE.MeshStandardMaterial({ color: 0x5555ff }));
+      box.position.set(Math.random() * 80 - 40, 1, Math.random() * 80 - 40);
+      scene.add(box);
+      obstacles.push(box);
     }
 
-    // Generate obstacles
+    // Enemies
+    const enemies = [];
+    const enemyGeometry = new THREE.BoxGeometry(1, 2, 1);
+    const enemyMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000 });
     for (let i = 0; i < 5; i++) {
-      obstacles.push({ x: 200 + i * 150, y: 200, width: 100, height: 100 });
+      const enemy = new THREE.Mesh(enemyGeometry, enemyMaterial.clone());
+      enemy.position.set(Math.random() * 80 - 40, 1, Math.random() * 80 - 40);
+      enemy.health = 100;
+      scene.add(enemy);
+      enemies.push(enemy);
     }
 
-    function drawPlayer() {
-      ctx.fillStyle = "lime";
-      ctx.fillRect(player.x, player.y, player.size, player.size);
-    }
+    // Shooting
+    document.addEventListener('mousedown', () => {
+      const raycaster = new THREE.Raycaster(camera.getWorldPosition(new THREE.Vector3()), camera.getWorldDirection(new THREE.Vector3()));
+      const intersects = raycaster.intersectObjects(enemies);
+      if (intersects.length > 0) {
+        const enemy = intersects[0].object;
+        enemy.health -= 50;
+        if (enemy.health <= 0) {
+          scene.remove(enemy);
+          enemies.splice(enemies.indexOf(enemy), 1);
+        }
+      }
+    });
 
-    function drawEnemies() {
-      ctx.fillStyle = "red";
-      enemies.forEach(e => {
-        ctx.fillRect(e.x, e.y, e.size, e.size);
-        if (useESP) drawESP(e);
-      });
-    }
+    // Animation loop
+    function animate() {
+      requestAnimationFrame(animate);
 
-    function drawObstacles() {
-      ctx.fillStyle = "gray";
-      obstacles.forEach(o => {
-        ctx.fillRect(o.x, o.y, o.width, o.height);
-      });
-    }
+      const delta = 0.1;
+      direction.z = Number(keys['KeyW']) - Number(keys['KeyS']);
+      direction.x = Number(keys['KeyD']) - Number(keys['KeyA']);
+      direction.normalize();
 
-    function drawESP(enemy) {
-      ctx.strokeStyle = "yellow";
-      ctx.strokeRect(enemy.x, enemy.y, enemy.size, enemy.size);
-      ctx.beginPath();
-      ctx.moveTo(player.x + player.size/2, player.y + player.size/2);
-      ctx.lineTo(enemy.x + enemy.size/2, enemy.y + enemy.size/2);
-      ctx.stroke();
-    }
+      velocity.x -= velocity.x * 10.0 * delta;
+      velocity.z -= velocity.z * 10.0 * delta;
+      velocity.x += direction.x * 400.0 * delta;
+      velocity.z += direction.z * 400.0 * delta;
 
-    function updatePlayer() {
-      if (keys['w']) player.y -= player.speed;
-      if (keys['s']) player.y += player.speed;
-      if (keys['a']) player.x -= player.speed;
-      if (keys['d']) player.x += player.speed;
-    }
+      controls.moveRight(velocity.x * delta);
+      controls.moveForward(velocity.z * delta);
 
-    function gameLoop() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      updatePlayer();
-      drawObstacles();
-      drawPlayer();
-      drawEnemies();
-      requestAnimationFrame(gameLoop);
+      renderer.render(scene, camera);
     }
-
-    gameLoop();
+    animate();
   </script>
 </body>
 </html>
