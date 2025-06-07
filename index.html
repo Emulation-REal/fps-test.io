@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>Pointer Lock Basic Test</title>
+<title>Pointer Lock with Three.js v0.125.2</title>
 <style>
   html, body {
     margin: 0; padding: 0; height: 100%;
@@ -36,8 +36,8 @@
   <p>Click the button to lock pointer and start</p>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/controls/PointerLockControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.125.2/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.125.2/examples/js/controls/PointerLockControls.js"></script>
 
 <script>
   console.log("Script loaded");
@@ -82,11 +82,6 @@
 
   // Movement variables
   const moveSpeed = 0.1;
-  const moveForward = false;
-  const moveBackward = false;
-  const moveLeft = false;
-  const moveRight = false;
-
   const keysPressed = {};
 
   document.addEventListener('keydown', (e) => {
