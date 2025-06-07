@@ -10,12 +10,21 @@
     font-family: monospace; color: white;
     user-select: none;
   }
-  #instructions {
+  #startScreen {
     position: absolute;
-    top: 40%; width: 100%;
-    text-align: center; font-size: 24px;
-    cursor: pointer; user-select: none;
-    color: #ddd;
+    top: 40%; left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+  }
+  #startBtn {
+    font-size: 28px;
+    padding: 15px 30px;
+    cursor: pointer;
+    background: #1a73e8;
+    border: none;
+    color: white;
+    border-radius: 6px;
+    user-select: none;
   }
   #modMenu {
     position: absolute;
@@ -34,7 +43,11 @@
 </style>
 </head>
 <body>
-<div id="instructions">Click or press any key to start playing</div>
+
+<div id="startScreen">
+  <button id="startBtn">Start Game</button>
+</div>
+
 <div id="modMenu">
   <label><input type="checkbox" id="esp"> ESP</label>
   <label><input type="checkbox" id="tracers"> Tracers</label>
@@ -65,19 +78,20 @@
   const controls = new THREE.PointerLockControls(camera, document.body);
   scene.add(controls.getObject());
 
-  // Instructions
-  const instructions = document.getElementById('instructions');
-  instructions.style.display = 'block';
+  // Start screen and button
+  const startScreen = document.getElementById('startScreen');
+  const startBtn = document.getElementById('startBtn');
 
-  // Pointer lock request
-  function startGame() {
-    if (!controls.isLocked) controls.lock();
-  }
-  instructions.addEventListener('click', startGame);
-  window.addEventListener('keydown', startGame);
+  startBtn.addEventListener('click', () => {
+    controls.lock();
+  });
 
-  controls.addEventListener('lock', () => { instructions.style.display = 'none'; });
-  controls.addEventListener('unlock', () => { instructions.style.display = 'block'; });
+  controls.addEventListener('lock', () => {
+    startScreen.style.display = 'none';
+  });
+  controls.addEventListener('unlock', () => {
+    startScreen.style.display = 'block';
+  });
 
   // Floor
   const floorGeometry = new THREE.PlaneGeometry(100, 100);
@@ -86,7 +100,7 @@
   floor.rotation.x = -Math.PI / 2;
   scene.add(floor);
 
-  // Obstacles (random boxes)
+  // Obstacles
   const obstacles = [];
   const boxGeometry = new THREE.BoxGeometry(2, 2, 2);
   const boxMaterial = new THREE.MeshStandardMaterial({color: 0x3344ff});
@@ -173,10 +187,10 @@
     // Raycast forward from camera
     const raycaster = new THREE.Raycaster();
     const origin = new THREE.Vector3();
-    const direction = new THREE.Vector3();
+    const dir = new THREE.Vector3();
     camera.getWorldPosition(origin);
-    camera.getWorldDirection(direction);
-    raycaster.set(origin, direction);
+    camera.getWorldDirection(dir);
+    raycaster.set(origin, dir);
     const hits = raycaster.intersectObjects(enemies);
     if(hits.length > 0) {
       const enemy = hits[0].object;
@@ -257,8 +271,7 @@
         }
       });
       if(closestEnemy) {
-        const target = closestEnemy.position.clone();
-        camera.lookAt(target);
+        camera.lookAt(closestEnemy.position);
       }
     }
 
@@ -292,7 +305,7 @@
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
   });
-
 </script>
+
 </body>
 </html>
