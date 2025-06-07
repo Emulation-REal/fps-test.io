@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>Pointer Lock with Three.js v0.125.2</title>
+<title>Pointer Lock with Basic Scene</title>
 <style>
   html, body {
     margin: 0; padding: 0; height: 100%;
@@ -40,43 +40,62 @@
 <script src="https://cdn.jsdelivr.net/npm/three@0.125.2/examples/js/controls/PointerLockControls.js"></script>
 
 <script>
-  console.log("Script loaded");
-
   const startScreen = document.getElementById('startScreen');
   const startBtn = document.getElementById('startBtn');
 
-  // Setup THREE.js scene
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x111111);
+  scene.background = new THREE.Color(0x333333);
 
   const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+  // Start the camera 2 units above ground
+  camera.position.y = 2;
+
   const renderer = new THREE.WebGLRenderer({antialias:true});
   renderer.setSize(window.innerWidth, window.innerHeight);
   document.body.appendChild(renderer.domElement);
 
-  // Add a floor
+  // Floor
   const floorGeometry = new THREE.PlaneGeometry(100, 100);
-  const floorMaterial = new THREE.MeshBasicMaterial({color: 0x555555});
+  const floorMaterial = new THREE.MeshPhongMaterial({color: 0x444444});
   const floor = new THREE.Mesh(floorGeometry, floorMaterial);
   floor.rotation.x = -Math.PI/2;
   scene.add(floor);
 
-  // PointerLockControls
+  // Add a few boxes as obstacles
+  const boxGeometry = new THREE.BoxGeometry(2,2,2);
+  const boxMaterial = new THREE.MeshPhongMaterial({color: 0x88ccff});
+
+  for(let i=0; i<10; i++) {
+    const box = new THREE.Mesh(boxGeometry, boxMaterial);
+    box.position.set(
+      (Math.random()-0.5)*50,
+      1,
+      (Math.random()-0.5)*50
+    );
+    scene.add(box);
+  }
+
+  // Light so we can see stuff better
+  const light = new THREE.DirectionalLight(0xffffff, 1);
+  light.position.set(5, 10, 7);
+  scene.add(light);
+
+  const ambientLight = new THREE.AmbientLight(0x555555);
+  scene.add(ambientLight);
+
+  // Controls
   const controls = new THREE.PointerLockControls(camera, document.body);
   scene.add(controls.getObject());
 
   startBtn.addEventListener('click', () => {
-    console.log("Start button clicked, requesting pointer lock...");
     controls.lock();
   });
 
   controls.addEventListener('lock', () => {
-    console.log("Pointer locked");
     startScreen.style.display = 'none';
   });
 
   controls.addEventListener('unlock', () => {
-    console.log("Pointer unlocked");
     startScreen.style.display = 'block';
   });
 
@@ -84,23 +103,18 @@
   const moveSpeed = 0.1;
   const keysPressed = {};
 
-  document.addEventListener('keydown', (e) => {
-    keysPressed[e.code] = true;
-  });
-  document.addEventListener('keyup', (e) => {
-    keysPressed[e.code] = false;
-  });
+  document.addEventListener('keydown', (e) => { keysPressed[e.code] = true; });
+  document.addEventListener('keyup', (e) => { keysPressed[e.code] = false; });
 
   function animate() {
     requestAnimationFrame(animate);
 
-    if (controls.isLocked === true) {
-      // Simple WASD movement
+    if(controls.isLocked) {
       const direction = new THREE.Vector3();
-      if (keysPressed['KeyW']) direction.z -= moveSpeed;
-      if (keysPressed['KeyS']) direction.z += moveSpeed;
-      if (keysPressed['KeyA']) direction.x -= moveSpeed;
-      if (keysPressed['KeyD']) direction.x += moveSpeed;
+      if(keysPressed['KeyW']) direction.z -= moveSpeed;
+      if(keysPressed['KeyS']) direction.z += moveSpeed;
+      if(keysPressed['KeyA']) direction.x -= moveSpeed;
+      if(keysPressed['KeyD']) direction.x += moveSpeed;
 
       controls.moveRight(direction.x);
       controls.moveForward(direction.z);
