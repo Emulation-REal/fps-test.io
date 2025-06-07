@@ -2,51 +2,454 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>Minimal Three.js Debug</title>
+<title>Basic 3D FPS with Mods</title>
 <style>
-  body { margin:0; overflow:hidden; }
-  canvas { display: block; }
+  body { margin:0; overflow:hidden; font-family: Arial, sans-serif; background: #111; color: white;}
+  #modMenu {
+    position: fixed;
+    top: 20px; right: 20px;
+    background: rgba(20,20,20,0.9);
+    border: 1px solid #555;
+    padding: 10px;
+    width: 220px;
+    font-size: 14px;
+    display: none;
+    user-select: none;
+    z-index: 9999;
+  }
+  #modMenu h2 {
+    margin-top: 0;
+    font-size: 18px;
+    text-align: center;
+  }
+  #modMenu label {
+    display: block;
+    margin: 8px 0;
+    cursor: pointer;
+  }
+  #instructions {
+    position: fixed;
+    bottom: 10px; left: 10px;
+    font-size: 14px;
+    background: rgba(0,0,0,0.6);
+    padding: 8px;
+    border-radius: 5px;
+    max-width: 300px;
+    z-index: 9999;
+  }
 </style>
 </head>
 <body>
 
+<div id="modMenu">
+  <h2>Mod Menu (Toggle with ;)</h2>
+  <label><input type="checkbox" id="espToggle" /> ESP (Enemy Boxes)</label>
+  <label><input type="checkbox" id="tracerToggle" /> Tracers (Lines to Enemies)</label>
+  <label><input type="checkbox" id="aimbotToggle" /> Aimbot (Right Click to Aim)</label>
+  <label>FOV: <input type="range" id="aimbotFOV" min="10" max="90" value="45" /> <span id="fovValue">45</span>°</label>
+</div>
+
+<div id="instructions">
+  Click screen to lock pointer.<br />
+  WASD to move, mouse to look.<br />
+  Left click to shoot.<br />
+  Right click to aim (Aimbot activates if enabled).<br />
+  Press <b>;</b> to toggle mod menu.
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/three@0.125.2/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.125.2/examples/js/controls/PointerLockControls.js"></script>
 <script>
-  // Scene setup
+(() => {
+  // Core Three.js setup
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0xaaaaaa);
+  scene.background = new THREE.Color(0x222222);
 
-  // Camera setup: FOV 75, aspect, near, far
   const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
-  camera.position.set(0, 0, 5);
+  camera.position.set(0, 1.6, 5); // Eye height ~1.6m
 
-  // Renderer setup
   const renderer = new THREE.WebGLRenderer({antialias:true});
   renderer.setSize(window.innerWidth, window.innerHeight);
   document.body.appendChild(renderer.domElement);
 
-  // Add a cube
-  const geometry = new THREE.BoxGeometry(1,1,1);
-  const material = new THREE.MeshBasicMaterial({color: 0x00ff00}); // green cube, basic material (no lighting)
-  const cube = new THREE.Mesh(geometry, material);
-  scene.add(cube);
+  // Controls setup - pointer lock for FPS mouse look
+  const controls = new THREE.PointerLockControls(camera, document.body);
+
+  document.body.addEventListener('click', () => {
+    if (!controls.isLocked) controls.lock();
+  });
+
+  controls.addEventListener('lock', () => {
+    instructions.style.display = 'none';
+  });
+
+  controls.addEventListener('unlock', () => {
+    instructions.style.display = '';
+  });
+
+  // Floor
+  const floorGeometry = new THREE.PlaneGeometry(100, 100);
+  const floorMaterial = new THREE.MeshStandardMaterial({color: 0x444444});
+  const floor = new THREE.Mesh(floorGeometry, floorMaterial);
+  floor.rotation.x = -Math.PI / 2;
+  floor.receiveShadow = true;
+  scene.add(floor);
+
+  // Lighting
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
+  scene.add(ambientLight);
+
+  const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+  directionalLight.position.set(10, 20, 10);
+  directionalLight.castShadow = true;
+  scene.add(directionalLight);
+
+  // Walls and obstacles (boxes with collision)
+  const walls = [];
+  const wallMaterial = new THREE.MeshStandardMaterial({color: 0x555555});
+  const createWall = (x, y, z, w, h, d) => {
+    const geometry = new THREE.BoxGeometry(w, h, d);
+    const mesh = new THREE.Mesh(geometry, wallMaterial);
+    mesh.position.set(x, y, z);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    scene.add(mesh);
+    walls.push(mesh);
+  };
+
+  // Build some walls for cover / obstacles
+  createWall(0, 1, -10, 20, 2, 1); // long wall in front
+  createWall(-6, 1, -5, 2, 2, 8); // left wall
+  createWall(6, 1, -5, 2, 2, 8);  // right wall
+  createWall(0, 1, 0, 4, 2, 1);   // small center wall
+
+  // Player movement variables
+  const velocity = new THREE.Vector3();
+  const direction = new THREE.Vector3();
+  const move = { forward: false, backward: false, left: false, right: false };
+  const speed = 5; // units per second
+  const playerHeight = 1.6;
+
+  // Keyboard input handling
+  document.addEventListener('keydown', e => {
+    switch(e.code){
+      case 'KeyW': move.forward = true; break;
+      case 'KeyS': move.backward = true; break;
+      case 'KeyA': move.left = true; break;
+      case 'KeyD': move.right = true; break;
+      case 'Escape': controls.unlock(); break;
+    }
+  });
+  document.addEventListener('keyup', e => {
+    switch(e.code){
+      case 'KeyW': move.forward = false; break;
+      case 'KeyS': move.backward = false; break;
+      case 'KeyA': move.left = false; break;
+      case 'KeyD': move.right = false; break;
+    }
+  });
+
+  // Collision detection helper
+  function checkCollision(pos){
+    const radius = 0.3; // player collision radius
+    for(const wall of walls){
+      const wallBox = new THREE.Box3().setFromObject(wall);
+      if (pos.x + radius > wallBox.min.x && pos.x - radius < wallBox.max.x &&
+          pos.y - playerHeight/2 < wallBox.max.y && pos.y + playerHeight/2 > wallBox.min.y &&
+          pos.z + radius > wallBox.min.z && pos.z - radius < wallBox.max.z) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // Player position stored separately from camera for collision
+  const playerPosition = new THREE.Vector3(0, playerHeight/2, 0);
+
+  // Enemies
+  const enemyGeometry = new THREE.SphereGeometry(0.5, 12, 12);
+  const enemyMaterial = new THREE.MeshStandardMaterial({color: 0xff0000});
+  class Enemy {
+    constructor(x,z){
+      this.mesh = new THREE.Mesh(enemyGeometry, enemyMaterial);
+      this.mesh.position.set(x, 0.5, z);
+      scene.add(this.mesh);
+      this.speed = 1.5;
+    }
+    update(delta){
+      // Simple chase player
+      const dir = playerPosition.clone().sub(this.mesh.position);
+      dir.y = 0;
+      const dist = dir.length();
+      if(dist > 0.5){
+        dir.normalize();
+        this.mesh.position.add(dir.multiplyScalar(this.speed * delta));
+      }
+    }
+  }
+  const enemies = [
+    new Enemy(5,-5),
+    new Enemy(-5,-7),
+    new Enemy(7, -10),
+  ];
+
+  // Bullets
+  const bulletGeometry = new THREE.SphereGeometry(0.1, 6, 6);
+  const bulletMaterial = new THREE.MeshBasicMaterial({color: 0xffff00});
+  class Bullet {
+    constructor(pos, dir){
+      this.mesh = new THREE.Mesh(bulletGeometry, bulletMaterial);
+      this.mesh.position.copy(pos);
+      scene.add(this.mesh);
+      this.velocity = dir.clone().multiplyScalar(15);
+      this.aliveTime = 0;
+    }
+    update(delta){
+      this.mesh.position.add(this.velocity.clone().multiplyScalar(delta));
+      this.aliveTime += delta;
+      // Remove bullet after 3 seconds
+      if(this.aliveTime > 3){
+        scene.remove(this.mesh);
+        return false;
+      }
+      return true;
+    }
+  }
+  const bullets = [];
+
+  // Shooting
+  window.addEventListener('mousedown', e => {
+    if (!controls.isLocked) return;
+    if(e.button === 0){ // Left click - shoot bullet
+      // Bullet spawns at camera pos + forward direction * offset
+      const shootDirection = new THREE.Vector3(0,0,-1);
+      shootDirection.applyQuaternion(camera.quaternion);
+      const bulletPos = camera.position.clone().add(shootDirection.clone().multiplyScalar(0.5));
+      bullets.push(new Bullet(bulletPos, shootDirection));
+    }
+  });
+
+  // Mod menu toggle with ';'
+  const modMenu = document.getElementById('modMenu');
+  window.addEventListener('keydown', e => {
+    if(e.key === ';'){
+      if(modMenu.style.display === 'none' || modMenu.style.display === '') {
+        modMenu.style.display = 'block';
+      } else {
+        modMenu.style.display = 'none';
+      }
+    }
+  });
+
+  // Mods state
+  const mods = {
+    esp: false,
+    tracers: false,
+    aimbot: false,
+    aimbotFOV: 45,
+  };
+
+  // UI elements
+  const espToggle = document.getElementById('espToggle');
+  const tracerToggle = document.getElementById('tracerToggle');
+  const aimbotToggle = document.getElementById('aimbotToggle');
+  const aimbotFOV = document.getElementById('aimbotFOV');
+  const fovValue = document.getElementById('fovValue');
+
+  espToggle.addEventListener('change', e => mods.esp = e.target.checked);
+  tracerToggle.addEventListener('change', e => mods.tracers = e.target.checked);
+  aimbotToggle.addEventListener('change', e => mods.aimbot = e.target.checked);
+  aimbotFOV.addEventListener('input', e => {
+    mods.aimbotFOV = Number(e.target.value);
+    fovValue.textContent = e.target.value;
+  });
+
+  // Helper for 2D screen coords of 3D point
+  const vector = new THREE.Vector3();
+  function toScreenPosition(obj, camera) {
+    const widthHalf = window.innerWidth / 2;
+    const heightHalf = window.innerHeight / 2;
+
+    obj.updateMatrixWorld();
+    vector.setFromMatrixPosition(obj.matrixWorld);
+    vector.project(camera);
+
+    return {
+      x: ( vector.x * widthHalf ) + widthHalf,
+      y: -( vector.y * heightHalf ) + heightHalf
+    };
+  }
+
+  // Canvas overlay for ESP & tracers
+  const overlay = document.createElement('canvas');
+  overlay.style.position = 'fixed';
+  overlay.style.top = '0';
+  overlay.style.left = '0';
+  overlay.width = window.innerWidth;
+  overlay.height = window.innerHeight;
+  overlay.style.pointerEvents = 'none';
+  overlay.style.zIndex = '9998';
+  document.body.appendChild(overlay);
+
+  const ctx = overlay.getContext('2d');
+
+  window.addEventListener('resize', () => {
+    overlay.width = window.innerWidth;
+    overlay.height = window.innerHeight;
+  });
+
+  // Aimbot helper: find closest enemy inside FOV cone
+  function getClosestEnemy(){
+    let closest = null;
+    let closestAngle = mods.aimbotFOV * Math.PI/180;
+
+    for(const enemy of enemies){
+      const toEnemy = enemy.mesh.position.clone().sub(camera.position).normalize();
+      const forward = new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion);
+      const angle = forward.angleTo(toEnemy);
+      if(angle < closestAngle){
+        closestAngle = angle;
+        closest = enemy;
+      }
+    }
+    return closest;
+  }
 
   // Animation loop
-  function animate() {
+  let prevTime = performance.now();
+  function animate(){
     requestAnimationFrame(animate);
-    cube.rotation.x += 0.01;
-    cube.rotation.y += 0.01;
+
+    const time = performance.now();
+    const delta = (time - prevTime)/1000;
+    prevTime = time;
+
+    if(controls.isLocked){
+      // Movement input
+      direction.set(0,0,0);
+      if(move.forward) direction.z -= 1;
+      if(move.backward) direction.z += 1;
+      if(move.left) direction.x -= 1;
+      if(move.right) direction.x += 1;
+      direction.normalize();
+
+      // Calculate new position with collision
+      const moveDistance = speed * delta;
+      const forward = new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion);
+      forward.y = 0; forward.normalize();
+      const right = new THREE.Vector3().crossVectors(new THREE.Vector3(0,1,0), forward).normalize();
+
+      const newPos = playerPosition.clone();
+
+      if(direction.z !== 0){
+        newPos.add(forward.clone().multiplyScalar(direction.z * moveDistance));
+      }
+      if(direction.x !== 0){
+        newPos.add(right.clone().multiplyScalar(direction.x * moveDistance));
+      }
+
+      // Check collision with walls
+      if(!checkCollision(newPos)){
+        playerPosition.copy(newPos);
+      }
+
+      // Update camera position
+      camera.position.set(playerPosition.x, playerHeight, playerPosition.z);
+    }
+
+    // Update enemies
+    enemies.forEach(e => e.update(delta));
+
+    // Update bullets
+    for(let i = bullets.length-1; i >=0; i--){
+      const alive = bullets[i].update(delta);
+      if(!alive) bullets.splice(i,1);
+    }
+
+    // Clear overlay
+    ctx.clearRect(0,0,overlay.width, overlay.height);
+
+    // Draw ESP boxes around enemies
+    if(mods.esp){
+      ctx.strokeStyle = 'red';
+      ctx.lineWidth = 2;
+      enemies.forEach(enemy => {
+        const pos = toScreenPosition(enemy.mesh, camera);
+        const size = 40 / (enemy.mesh.position.distanceTo(camera.position) + 1);
+        ctx.strokeRect(pos.x - size/2, pos.y - size/2, size, size);
+      });
+    }
+
+    // Draw tracers (lines from center bottom of screen to enemies)
+    if(mods.tracers){
+      ctx.strokeStyle = 'yellow';
+      ctx.lineWidth = 1;
+      const startX = overlay.width/2;
+      const startY = overlay.height;
+      enemies.forEach(enemy => {
+        const pos = toScreenPosition(enemy.mesh, camera);
+        ctx.beginPath();
+        ctx.moveTo(startX, startY);
+        ctx.lineTo(pos.x, pos.y);
+        ctx.stroke();
+      });
+    }
+
+    // Aimbot: if enabled and right mouse down, rotate camera towards closest enemy inside FOV
+    if(mods.aimbot && controls.isLocked && rightMouseDown){
+      const target = getClosestEnemy();
+      if(target){
+        // Calculate target direction vector
+        const targetPos = target.mesh.position.clone();
+        targetPos.y += 0.5; // aim at center height of enemy
+
+        const dir = targetPos.sub(camera.position).normalize();
+
+        // Convert dir vector to spherical angles (yaw, pitch)
+        const yaw = Math.atan2(dir.x, dir.z);
+        const pitch = Math.asin(dir.y);
+
+        // Smoothly rotate camera towards target
+        // We'll adjust controls.getObject rotation (which is the camera parent)
+        const euler = new THREE.Euler( -pitch, yaw, 0, 'YXZ' );
+
+        // Interpolate rotation (lerp) for smoothness
+        const lerpFactor = 0.15;
+
+        controls.getObject().rotation.x += (euler.x - controls.getObject().rotation.x) * lerpFactor;
+        controls.getObject().rotation.y += (euler.y - controls.getObject().rotation.y) * lerpFactor;
+      }
+    }
+
     renderer.render(scene, camera);
   }
   animate();
 
-  // Handle resize
+  // Track right mouse button for aiming
+  let rightMouseDown = false;
+  window.addEventListener('mousedown', e => {
+    if(e.button === 2) rightMouseDown = true;
+  });
+  window.addEventListener('mouseup', e => {
+    if(e.button === 2) rightMouseDown = false;
+  });
+  // Prevent context menu on right click
+  window.addEventListener('contextmenu', e => e.preventDefault());
+
+  // Instructions element
+  const instructions = document.getElementById('instructions');
+
+  // Resize handler
   window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth/window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
-  });
-</script>
 
+    overlay.width = window.innerWidth;
+    overlay.height = window.innerHeight;
+  });
+
+})();
+</script>
 </body>
 </html>
