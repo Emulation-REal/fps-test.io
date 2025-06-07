@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>3D FPS Game with Guns, Enemies, Mods, and Tracers</title>
+<title>3D FPS Game with Mods and Aimbot FOV</title>
 <style>
   body, html {
     margin: 0; padding: 0; overflow: hidden;
@@ -20,6 +20,7 @@
     width: 200px;
     font-size: 14px;
     z-index: 10;
+    display: none;
   }
   #modMenu label {
     display: block;
@@ -33,24 +34,36 @@
     position: relative;
     z-index: 1;
   }
+  #fovCanvas {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    pointer-events: none;
+    transform: translate(-50%, -50%);
+    z-index: 20;
+  }
 </style>
 </head>
 <body>
 
 <div id="modMenu">
-  <strong>Mods</strong><br/>
+  <strong>Mods (toggle with checkboxes)</strong><br/>
   <label><input type="checkbox" id="aimbotToggle" /> Aimbot</label>
   <label><input type="checkbox" id="noclipToggle" /> No Clip</label>
   <label><input type="checkbox" id="espToggle" /> ESP (Glow)</label>
   <label><input type="checkbox" id="tracerToggle" /> Tracers</label>
+  <label><input type="checkbox" id="flyToggle" /> Fly</label>
 </div>
+
+<!-- FOV canvas overlay for aimbot -->
+<canvas id="fovCanvas" width="200" height="200"></canvas>
 
 <script src="https://cdn.jsdelivr.net/npm/three@0.125.2/build/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.125.2/examples/js/controls/PointerLockControls.js"></script>
 
 <script>
 (() => {
-  // Setup THREE.js
+  // --- THREE Setup ---
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x444444);
   const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
@@ -60,9 +73,9 @@
   document.body.appendChild(renderer.domElement);
 
   // Lighting
-  const light = new THREE.DirectionalLight(0xffffff, 1);
-  light.position.set(1, 10, 5);
-  scene.add(light);
+  const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+  directionalLight.position.set(1, 10, 5);
+  scene.add(directionalLight);
 
   const ambientLight = new THREE.AmbientLight(0x404040);
   scene.add(ambientLight);
@@ -75,7 +88,7 @@
   floor.receiveShadow = true;
   scene.add(floor);
 
-  // Obstacles (boxes)
+  // Obstacles
   const obstacles = [];
   const boxGeometry = new THREE.BoxGeometry(2, 2, 2);
   const boxMaterial = new THREE.MeshStandardMaterial({color: 0x6666ff});
@@ -90,19 +103,20 @@
     obstacles.push(box);
   }
 
-  // Player
+  // Player setup
   const player = {
-    velocity: new THREE.Vector3(0,0,0),
+    velocity: new THREE.Vector3(),
     direction: new THREE.Vector3(),
     speed: 10,
-    canJump: false,
     height: 1.7,
-    position: new THREE.Vector3(0, 1.7, 10),
+    canJump: false,
+    flying: false,
+    position: new THREE.Vector3(0, 1.7, 10)
   };
 
   camera.position.copy(player.position);
 
-  // PointerLockControls
+  // Controls
   const controls = new THREE.PointerLockControls(camera, document.body);
   document.body.addEventListener('click', () => {
     controls.lock();
@@ -110,7 +124,8 @@
   controls.getObject().position.copy(player.position);
 
   // Movement flags
-  const move = { forward: false, backward: false, left: false, right: false };
+  const move = { forward: false, backward: false, left: false, right: false, up: false, down: false };
+  let isAiming = false; // Right mouse button down?
 
   document.addEventListener('keydown', e => {
     switch(e.code){
@@ -118,26 +133,40 @@
       case 'KeyS': move.backward = true; break;
       case 'KeyA': move.left = true; break;
       case 'KeyD': move.right = true; break;
-      case 'Space':
-        if(player.canJump){
-          player.velocity.y = 8;
-          player.canJump = false;
-        }
-        break;
+      case 'Space': move.up = true; break;
+      case 'ShiftLeft': move.down = true; break;
     }
   });
-
   document.addEventListener('keyup', e => {
     switch(e.code){
       case 'KeyW': move.forward = false; break;
       case 'KeyS': move.backward = false; break;
       case 'KeyA': move.left = false; break;
       case 'KeyD': move.right = false; break;
+      case 'Space': move.up = false; break;
+      case 'ShiftLeft': move.down = false; break;
     }
   });
 
+  // Mouse buttons for aiming
+  document.addEventListener('mousedown', e => {
+    if(e.button === 2){ // right click
+      isAiming = true;
+    }
+  });
+  document.addEventListener('mouseup', e => {
+    if(e.button === 2){
+      isAiming = false;
+    }
+  });
+
+  // Prevent context menu on right-click
+  window.addEventListener('contextmenu', e => {
+    e.preventDefault();
+  });
+
   // Enemies
-  const enemyGeometry = new THREE.BoxGeometry(1,2,1);
+  const enemyGeometry = new THREE.BoxGeometry(1, 2, 1);
   const enemyMaterial = new THREE.MeshStandardMaterial({color: 0xff5555});
   const enemies = [];
 
@@ -159,13 +188,20 @@
   const bulletGeometry = new THREE.SphereGeometry(0.1, 8, 8);
   const bulletMaterial = new THREE.MeshBasicMaterial({color: 0xffff00});
 
-  // Mods state
+  // Mods state (all OFF by default)
   const mods = {
     aimbot: false,
     noclip: false,
     esp: false,
     tracers: false,
+    fly: false,
   };
+
+  document.getElementById('aimbotToggle').checked = false;
+  document.getElementById('noclipToggle').checked = false;
+  document.getElementById('espToggle').checked = false;
+  document.getElementById('tracerToggle').checked = false;
+  document.getElementById('flyToggle').checked = false;
 
   document.getElementById('aimbotToggle').addEventListener('change', (e) => {
     mods.aimbot = e.target.checked;
@@ -178,15 +214,16 @@
   });
   document.getElementById('tracerToggle').addEventListener('change', (e) => {
     mods.tracers = e.target.checked;
-    if(!mods.tracers){
-      clearTracers();
-    }
+    if(!mods.tracers) clearTracers();
+  });
+  document.getElementById('flyToggle').addEventListener('change', (e) => {
+    mods.fly = e.target.checked;
   });
 
-  // Raycaster for collision & shooting
+  // Raycaster for collision and shooting
   const raycaster = new THREE.Raycaster();
 
-  // Clock for delta
+  // Clock for delta time
   const clock = new THREE.Clock();
 
   // Collision check player vs obstacles
@@ -195,7 +232,6 @@
       newPos.clone().add(new THREE.Vector3(0, player.height/2, 0)),
       new THREE.Vector3(1, player.height, 1)
     );
-
     for(const obs of obstacles){
       const obsBox = new THREE.Box3().setFromObject(obs);
       if(playerBox.intersectsBox(obsBox)) return true;
@@ -219,6 +255,7 @@
 
   // Shoot function
   function shoot(){
+    if(!controls.isLocked) return;
     const bullet = new THREE.Mesh(bulletGeometry, bulletMaterial);
     bullet.position.copy(camera.position);
     const dir = new THREE.Vector3();
@@ -230,9 +267,12 @@
 
   let shootCooldown = 0;
 
-  // Aimbot helper
+  // Aimbot helper (only active when aiming and mod enabled)
+  // Added aimbot FOV circle rendering on separate canvas
+  const AIMBOT_FOV = 0.25; // radians (~14 degrees)
+
   function aimbot(delta){
-    if(!mods.aimbot) return;
+    if(!mods.aimbot || !isAiming) return;
 
     let closestEnemy = null;
     let closestDist = Infinity;
@@ -244,7 +284,7 @@
       const dist = toEnemy.length();
       toEnemy.normalize();
       const angle = camDir.angleTo(toEnemy);
-      if(angle < Math.PI / 4 && dist < closestDist){
+      if(angle < AIMBOT_FOV && dist < closestDist){
         closestDist = dist;
         closestEnemy = enemy;
       }
@@ -275,7 +315,7 @@
       if(Math.abs(angleDiff) < 0.1){
         if(shootCooldown <= 0){
           shoot();
-          shootCooldown = 0.5;
+          shootCooldown = 0.3;
         }
       }
     }
@@ -310,9 +350,15 @@
 
   // Player movement and collisions
   function playerMovement(delta){
+    const controlObject = controls.getObject();
+
     player.velocity.x -= player.velocity.x * 10.0 * delta;
     player.velocity.z -= player.velocity.z * 10.0 * delta;
-    player.velocity.y -= 9.8 * 5 * delta;
+    if(!mods.fly){
+      player.velocity.y -= 9.8 * 5 * delta; // gravity
+    } else {
+      player.velocity.y = 0; // cancel gravity while flying
+    }
 
     player.direction.z = Number(move.forward) - Number(move.backward);
     player.direction.x = Number(move.right) - Number(move.left);
@@ -321,7 +367,18 @@
     if(move.forward || move.backward) player.velocity.z -= player.direction.z * player.speed * delta;
     if(move.left || move.right) player.velocity.x -= player.direction.x * player.speed * delta;
 
-    const controlObject = controls.getObject();
+    // Flying up/down controls
+    if(mods.fly){
+      if(move.up) player.velocity.y = player.speed;
+      else if(move.down) player.velocity.y = -player.speed;
+      else player.velocity.y = 0;
+    } else {
+      // Jump handled by space key flag in move.up, here for completeness:
+      if(move.up && player.canJump){
+        player.velocity.y = 8;
+        player.canJump = false;
+      }
+    }
 
     const velocity = new THREE.Vector3(player.velocity.x, player.velocity.y, player.velocity.z);
     const euler = new THREE.Euler(0, controlObject.rotation.y, 0, 'YXZ');
@@ -361,9 +418,6 @@
   }
 
   // --- Tracers ---
-
-  // We'll draw tracers using THREE.Line objects
-
   const tracerMaterial = new THREE.LineBasicMaterial({ color: 0x00ff00 });
   const tracers = [];
 
@@ -378,9 +432,7 @@
 
     enemies.forEach(enemy => {
       const points = [];
-      // From player's camera position
       points.push(camera.position.clone());
-      // To enemy's position, elevated to center of enemy box
       points.push(enemy.position.clone().add(new THREE.Vector3(0,1,0)));
 
       const geometry = new THREE.BufferGeometry().setFromPoints(points);
@@ -389,6 +441,35 @@
       tracers.push(line);
     });
   }
+
+  // --- Aimbot FOV Circle Overlay ---
+
+  const fovCanvas = document.getElementById('fovCanvas');
+  const fovCtx = fovCanvas.getContext('2d');
+  const fovRadius = fovCanvas.width / 2 * (AIMBOT_FOV / (Math.PI / 2)); // scale rad to canvas size
+
+  function drawFOV(){
+    fovCtx.clearRect(0,0,fovCanvas.width,fovCanvas.height);
+    if(mods.aimbot && isAiming){
+      fovCtx.beginPath();
+      fovCtx.strokeStyle = 'rgba(0,255,0,0.7)';
+      fovCtx.lineWidth = 3;
+      fovCtx.arc(fovCanvas.width/2, fovCanvas.height/2, fovRadius, 0, Math.PI*2);
+      fovCtx.stroke();
+    }
+  }
+
+  // --- Mod Menu toggle with ";" key ---
+  const modMenu = document.getElementById('modMenu');
+  window.addEventListener('keydown', e => {
+    if(e.key === ';'){
+      if(modMenu.style.display === 'none' || modMenu.style.display === ''){
+        modMenu.style.display = 'block';
+      } else {
+        modMenu.style.display = 'none';
+      }
+    }
+  });
 
   // Animation loop
   function animate(){
@@ -403,6 +484,8 @@
       updateESP();
       updateTracers();
     }
+
+    drawFOV();
 
     renderer.render(scene, camera);
     requestAnimationFrame(animate);
