@@ -3,504 +3,277 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>3D FPS Game with Mods and Aimbot FOV</title>
+<title>FPS Mods Demo</title>
 <style>
   body, html {
     margin: 0; padding: 0; overflow: hidden;
-    height: 100%; background: #222;
+    background: #111;
+    color: #eee;
     font-family: Arial, sans-serif;
-    color: white;
+    user-select: none;
   }
-  #modMenu {
-    position: fixed;
-    top: 10px; right: 10px;
-    background: rgba(0,0,0,0.7);
-    padding: 10px;
-    border-radius: 8px;
-    width: 200px;
-    font-size: 14px;
-    z-index: 10;
-    display: none;
-  }
-  #modMenu label {
-    display: block;
-    margin: 6px 0;
-    cursor: pointer;
-  }
-  canvas {
+  #gameCanvas {
+    background: #222;
     display: block;
     margin: 0 auto;
-    background: #555;
-    position: relative;
-    z-index: 1;
+    border: 1px solid #444;
   }
-  #fovCanvas {
+  #modControls {
     position: fixed;
-    top: 50%;
-    left: 50%;
-    pointer-events: none;
-    transform: translate(-50%, -50%);
-    z-index: 20;
+    top: 10px;
+    left: 10px;
+    background: rgba(0,0,0,0.7);
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 14px;
+  }
+  #modControls label {
+    display: block;
+    margin-bottom: 6px;
+    cursor: pointer;
   }
 </style>
 </head>
 <body>
 
-<div id="modMenu">
-  <strong>Mods (toggle with checkboxes)</strong><br/>
-  <label><input type="checkbox" id="aimbotToggle" /> Aimbot</label>
-  <label><input type="checkbox" id="noclipToggle" /> No Clip</label>
-  <label><input type="checkbox" id="espToggle" /> ESP (Glow)</label>
-  <label><input type="checkbox" id="tracerToggle" /> Tracers</label>
-  <label><input type="checkbox" id="flyToggle" /> Fly</label>
+<canvas id="gameCanvas" width="800" height="450"></canvas>
+
+<div id="modControls">
+  <label><input type="checkbox" id="toggleAimbot" /> Enable Aimbot (Hold Right Mouse to Aim)</label>
+  <label><input type="checkbox" id="toggleESP" /> Enable ESP (Boxes around enemies)</label>
+  <label><input type="checkbox" id="toggleFly" /> Enable Fly</label>
 </div>
-
-<!-- FOV canvas overlay for aimbot -->
-<canvas id="fovCanvas" width="200" height="200"></canvas>
-
-<script src="https://cdn.jsdelivr.net/npm/three@0.125.2/build/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.125.2/examples/js/controls/PointerLockControls.js"></script>
 
 <script>
 (() => {
-  // --- THREE Setup ---
-  const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x444444);
-  const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+  const canvas = document.getElementById('gameCanvas');
+  const ctx = canvas.getContext('2d');
 
-  const renderer = new THREE.WebGLRenderer({antialias:true});
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  document.body.appendChild(renderer.domElement);
-
-  // Lighting
-  const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-  directionalLight.position.set(1, 10, 5);
-  scene.add(directionalLight);
-
-  const ambientLight = new THREE.AmbientLight(0x404040);
-  scene.add(ambientLight);
-
-  // Floor
-  const floorGeometry = new THREE.PlaneGeometry(100, 100);
-  const floorMaterial = new THREE.MeshStandardMaterial({color: 0x222222});
-  const floor = new THREE.Mesh(floorGeometry, floorMaterial);
-  floor.rotation.x = - Math.PI / 2;
-  floor.receiveShadow = true;
-  scene.add(floor);
-
-  // Obstacles
-  const obstacles = [];
-  const boxGeometry = new THREE.BoxGeometry(2, 2, 2);
-  const boxMaterial = new THREE.MeshStandardMaterial({color: 0x6666ff});
-  for(let i = 0; i < 10; i++){
-    const box = new THREE.Mesh(boxGeometry, boxMaterial);
-    box.position.set(
-      (Math.random() - 0.5) * 40,
-      1,
-      (Math.random() - 0.5) * 40
-    );
-    scene.add(box);
-    obstacles.push(box);
-  }
-
-  // Player setup
-  const player = {
-    velocity: new THREE.Vector3(),
-    direction: new THREE.Vector3(),
-    speed: 10,
-    height: 1.7,
-    canJump: false,
-    flying: false,
-    position: new THREE.Vector3(0, 1.7, 10)
-  };
-
-  camera.position.copy(player.position);
-
-  // Controls
-  const controls = new THREE.PointerLockControls(camera, document.body);
-  document.body.addEventListener('click', () => {
-    controls.lock();
-  });
-  controls.getObject().position.copy(player.position);
-
-  // Movement flags
-  const move = { forward: false, backward: false, left: false, right: false, up: false, down: false };
-  let isAiming = false; // Right mouse button down?
-
-  document.addEventListener('keydown', e => {
-    switch(e.code){
-      case 'KeyW': move.forward = true; break;
-      case 'KeyS': move.backward = true; break;
-      case 'KeyA': move.left = true; break;
-      case 'KeyD': move.right = true; break;
-      case 'Space': move.up = true; break;
-      case 'ShiftLeft': move.down = true; break;
-    }
-  });
-  document.addEventListener('keyup', e => {
-    switch(e.code){
-      case 'KeyW': move.forward = false; break;
-      case 'KeyS': move.backward = false; break;
-      case 'KeyA': move.left = false; break;
-      case 'KeyD': move.right = false; break;
-      case 'Space': move.up = false; break;
-      case 'ShiftLeft': move.down = false; break;
-    }
-  });
-
-  // Mouse buttons for aiming
-  document.addEventListener('mousedown', e => {
-    if(e.button === 2){ // right click
-      isAiming = true;
-    }
-  });
-  document.addEventListener('mouseup', e => {
-    if(e.button === 2){
-      isAiming = false;
-    }
-  });
-
-  // Prevent context menu on right-click
-  window.addEventListener('contextmenu', e => {
-    e.preventDefault();
-  });
-
-  // Enemies
-  const enemyGeometry = new THREE.BoxGeometry(1, 2, 1);
-  const enemyMaterial = new THREE.MeshStandardMaterial({color: 0xff5555});
-  const enemies = [];
-
-  for(let i = 0; i < 5; i++){
-    const enemy = new THREE.Mesh(enemyGeometry, enemyMaterial.clone());
-    enemy.position.set(
-      (Math.random() - 0.5) * 50,
-      1,
-      (Math.random() - 0.5) * 50
-    );
-    enemy.userData = { speed: 2, direction: new THREE.Vector3() };
-    scene.add(enemy);
-    enemies.push(enemy);
-  }
-
-  // Bullets
-  const bullets = [];
-  const bulletSpeed = 40;
-  const bulletGeometry = new THREE.SphereGeometry(0.1, 8, 8);
-  const bulletMaterial = new THREE.MeshBasicMaterial({color: 0xffff00});
-
-  // Mods state (all OFF by default)
-  const mods = {
+  // Settings - all off by default
+  let mods = {
     aimbot: false,
-    noclip: false,
     esp: false,
-    tracers: false,
     fly: false,
   };
 
-  document.getElementById('aimbotToggle').checked = false;
-  document.getElementById('noclipToggle').checked = false;
-  document.getElementById('espToggle').checked = false;
-  document.getElementById('tracerToggle').checked = false;
-  document.getElementById('flyToggle').checked = false;
+  // Player state
+  const player = {
+    pos: { x: canvas.width/2, y: canvas.height/2, z: 0 },
+    speed: 6,
+    flySpeed: 4,
+    width: 20,
+    height: 40,
+    aimAngle: 0,  // angle aiming at (radians)
+  };
 
-  document.getElementById('aimbotToggle').addEventListener('change', (e) => {
+  // Simulated enemies (simple 2D for demo)
+  const enemies = [
+    { id: 1, pos: { x: 200, y: 100, z: 0 }, width: 20, height: 40 },
+    { id: 2, pos: { x: 600, y: 250, z: 0 }, width: 20, height: 40 },
+    { id: 3, pos: { x: 400, y: 400, z: 0 }, width: 20, height: 40 },
+  ];
+
+  // Input states
+  const keys = {};
+  let isAiming = false;
+
+  // For aimbot FOV radius (in pixels on canvas)
+  const AIMBOT_FOV_RADIUS = 100;
+
+  // --- Event Listeners ---
+  window.addEventListener('keydown', e => {
+    keys[e.key.toLowerCase()] = true;
+  });
+  window.addEventListener('keyup', e => {
+    keys[e.key.toLowerCase()] = false;
+  });
+
+  // Right mouse = aiming
+  window.addEventListener('mousedown', e => {
+    if (e.button === 2) isAiming = true;
+  });
+  window.addEventListener('mouseup', e => {
+    if (e.button === 2) isAiming = false;
+  });
+  // Disable context menu on right-click so right mouse can be used for aiming
+  window.addEventListener('contextmenu', e => e.preventDefault());
+
+  // Mod toggles
+  document.getElementById('toggleAimbot').addEventListener('change', e => {
     mods.aimbot = e.target.checked;
   });
-  document.getElementById('noclipToggle').addEventListener('change', (e) => {
-    mods.noclip = e.target.checked;
-  });
-  document.getElementById('espToggle').addEventListener('change', (e) => {
+  document.getElementById('toggleESP').addEventListener('change', e => {
     mods.esp = e.target.checked;
   });
-  document.getElementById('tracerToggle').addEventListener('change', (e) => {
-    mods.tracers = e.target.checked;
-    if(!mods.tracers) clearTracers();
-  });
-  document.getElementById('flyToggle').addEventListener('change', (e) => {
+  document.getElementById('toggleFly').addEventListener('change', e => {
     mods.fly = e.target.checked;
   });
 
-  // Raycaster for collision and shooting
-  const raycaster = new THREE.Raycaster();
+  // Movement function
+  function movePlayer() {
+    let speed = player.speed;
 
-  // Clock for delta time
-  const clock = new THREE.Clock();
-
-  // Collision check player vs obstacles
-  function checkCollision(newPos){
-    const playerBox = new THREE.Box3().setFromCenterAndSize(
-      newPos.clone().add(new THREE.Vector3(0, player.height/2, 0)),
-      new THREE.Vector3(1, player.height, 1)
-    );
-    for(const obs of obstacles){
-      const obsBox = new THREE.Box3().setFromObject(obs);
-      if(playerBox.intersectsBox(obsBox)) return true;
+    // Fly mod changes vertical movement
+    if (mods.fly) {
+      if (keys[' ']) { // Space to fly up
+        player.pos.z += player.flySpeed;
+      }
+      if (keys['shift']) { // Shift to fly down
+        player.pos.z -= player.flySpeed;
+      }
     }
-    return false;
+
+    // WASD movement - fixed correct directions (no inversion)
+    if (keys['a']) player.pos.x -= speed;
+    if (keys['d']) player.pos.x += speed;
+    if (keys['w']) player.pos.y -= speed;
+    if (keys['s']) player.pos.y += speed;
+
+    // Clamp player position inside canvas bounds (simple)
+    player.pos.x = Math.min(Math.max(player.pos.x, 0), canvas.width);
+    player.pos.y = Math.min(Math.max(player.pos.y, 0), canvas.height);
   }
 
-  // Enemy AI - move toward player
-  function updateEnemies(delta){
-    enemies.forEach(enemy => {
-      const directionToPlayer = player.position.clone().sub(enemy.position);
-      directionToPlayer.y = 0;
-      const dist = directionToPlayer.length();
-      if(dist > 0.5){
-        directionToPlayer.normalize();
-        enemy.userData.direction.copy(directionToPlayer);
-        enemy.position.add(directionToPlayer.multiplyScalar(enemy.userData.speed * delta));
-      }
+  // Draw player as blue rectangle
+  function drawPlayer() {
+    ctx.fillStyle = 'blue';
+    ctx.fillRect(
+      player.pos.x - player.width/2,
+      player.pos.y - player.height/2,
+      player.width,
+      player.height
+    );
+  }
+
+  // Draw enemies as red rectangles
+  function drawEnemies() {
+    ctx.fillStyle = 'red';
+    enemies.forEach(e => {
+      ctx.fillRect(e.pos.x - e.width/2, e.pos.y - e.height/2, e.width, e.height);
     });
   }
 
-  // Shoot function
-  function shoot(){
-    if(!controls.isLocked) return;
-    const bullet = new THREE.Mesh(bulletGeometry, bulletMaterial);
-    bullet.position.copy(camera.position);
-    const dir = new THREE.Vector3();
-    camera.getWorldDirection(dir);
-    bullet.userData = { velocity: dir.multiplyScalar(bulletSpeed) };
-    scene.add(bullet);
-    bullets.push(bullet);
+  // Calculate distance from player crosshair (center) to enemy center (2D)
+  function distToCrosshair(enemy) {
+    let dx = enemy.pos.x - player.pos.x;
+    let dy = enemy.pos.y - player.pos.y;
+    return Math.sqrt(dx*dx + dy*dy);
   }
 
-  let shootCooldown = 0;
-
-  // Aimbot helper (only active when aiming and mod enabled)
-  // Added aimbot FOV circle rendering on separate canvas
-  const AIMBOT_FOV = 0.25; // radians (~14 degrees)
-
-  function aimbot(delta){
-    if(!mods.aimbot || !isAiming) return;
+  // Aimbot - aim at closest enemy inside FOV circle
+  function aimbot() {
+    if (!mods.aimbot || !isAiming) return;
 
     let closestEnemy = null;
-    let closestDist = Infinity;
-    const camDir = new THREE.Vector3();
-    camera.getWorldDirection(camDir);
+    let closestDist = AIMBOT_FOV_RADIUS;
 
-    enemies.forEach(enemy => {
-      const toEnemy = enemy.position.clone().sub(camera.position);
-      const dist = toEnemy.length();
-      toEnemy.normalize();
-      const angle = camDir.angleTo(toEnemy);
-      if(angle < AIMBOT_FOV && dist < closestDist){
+    for (const enemy of enemies) {
+      let dist = distToCrosshair(enemy);
+      if (dist < closestDist) {
         closestDist = dist;
         closestEnemy = enemy;
       }
-    });
+    }
 
-    if(closestEnemy){
-      const enemyPos = closestEnemy.position.clone();
-      enemyPos.y = camera.position.y;
-      const playerPos = camera.position.clone();
-      playerPos.y = camera.position.y;
-
-      const desiredDir = enemyPos.clone().sub(playerPos).normalize();
-      const desiredAngle = Math.atan2(desiredDir.x, desiredDir.z);
-
-      const euler = new THREE.Euler().setFromQuaternion(controls.getObject().quaternion);
-      let currentYaw = euler.y;
-
-      let angleDiff = desiredAngle - currentYaw;
-      angleDiff = ((angleDiff + Math.PI) % (2 * Math.PI)) - Math.PI;
-
-      const maxTurnSpeed = 5 * delta;
-      angleDiff = THREE.MathUtils.clamp(angleDiff, -maxTurnSpeed, maxTurnSpeed);
-
-      currentYaw += angleDiff;
-      euler.y = currentYaw;
-      controls.getObject().quaternion.setFromEuler(euler);
-
-      if(Math.abs(angleDiff) < 0.1){
-        if(shootCooldown <= 0){
-          shoot();
-          shootCooldown = 0.3;
-        }
-      }
+    if (closestEnemy) {
+      // Aim angle = angle from player to enemy
+      player.aimAngle = Math.atan2(
+        closestEnemy.pos.y - player.pos.y,
+        closestEnemy.pos.x - player.pos.x
+      );
     }
   }
 
-  // Update bullets
-  function updateBullets(delta){
-    for(let i = bullets.length - 1; i >= 0; i--){
-      const b = bullets[i];
-      b.position.addScaledVector(b.userData.velocity, delta);
-
-      if(b.position.distanceTo(camera.position) > 100){
-        scene.remove(b);
-        bullets.splice(i,1);
-        continue;
-      }
-
-      for(let j = enemies.length - 1; j >= 0; j--){
-        const enemy = enemies[j];
-        const enemyBox = new THREE.Box3().setFromObject(enemy);
-        if(enemyBox.containsPoint(b.position)){
-          scene.remove(enemy);
-          enemies.splice(j, 1);
-
-          scene.remove(b);
-          bullets.splice(i,1);
-          break;
-        }
-      }
-    }
+  // Draw aimbot FOV circle around player center
+  function drawAimbotFOV() {
+    if (!mods.aimbot) return;
+    ctx.beginPath();
+    ctx.strokeStyle = 'lime';
+    ctx.lineWidth = 2;
+    ctx.arc(player.pos.x, player.pos.y, AIMBOT_FOV_RADIUS, 0, 2 * Math.PI);
+    ctx.stroke();
   }
 
-  // Player movement and collisions
-  function playerMovement(delta){
-    const controlObject = controls.getObject();
-
-    player.velocity.x -= player.velocity.x * 10.0 * delta;
-    player.velocity.z -= player.velocity.z * 10.0 * delta;
-    if(!mods.fly){
-      player.velocity.y -= 9.8 * 5 * delta; // gravity
-    } else {
-      player.velocity.y = 0; // cancel gravity while flying
-    }
-
-    player.direction.z = Number(move.forward) - Number(move.backward);
-    player.direction.x = Number(move.right) - Number(move.left);
-    player.direction.normalize();
-
-    if(move.forward || move.backward) player.velocity.z -= player.direction.z * player.speed * delta;
-    if(move.left || move.right) player.velocity.x -= player.direction.x * player.speed * delta;
-
-    // Flying up/down controls
-    if(mods.fly){
-      if(move.up) player.velocity.y = player.speed;
-      else if(move.down) player.velocity.y = -player.speed;
-      else player.velocity.y = 0;
-    } else {
-      // Jump handled by space key flag in move.up, here for completeness:
-      if(move.up && player.canJump){
-        player.velocity.y = 8;
-        player.canJump = false;
-      }
-    }
-
-    const velocity = new THREE.Vector3(player.velocity.x, player.velocity.y, player.velocity.z);
-    const euler = new THREE.Euler(0, controlObject.rotation.y, 0, 'YXZ');
-    velocity.applyEuler(euler);
-
-    const newPos = controlObject.position.clone().add(velocity.clone().multiplyScalar(delta));
-
-    if(!mods.noclip){
-      if(newPos.y < player.height){
-        player.velocity.y = 0;
-        newPos.y = player.height;
-        player.canJump = true;
-      }
-      if(!checkCollision(newPos)){
-        controlObject.position.copy(newPos);
-      }
-    } else {
-      controlObject.position.copy(newPos);
-      if(newPos.y < 0) controlObject.position.y = 0;
-      player.canJump = true;
-    }
-
-    player.position.copy(controlObject.position);
-    camera.position.copy(controlObject.position);
-  }
-
-  // ESP glow
-  function updateESP(){
-    enemies.forEach(enemy => {
-      if(mods.esp){
-        enemy.material.emissive = new THREE.Color(0x00ff00);
-        enemy.material.emissiveIntensity = 0.5;
-      } else {
-        enemy.material.emissiveIntensity = 0;
-      }
-    });
-  }
-
-  // --- Tracers ---
-  const tracerMaterial = new THREE.LineBasicMaterial({ color: 0x00ff00 });
-  const tracers = [];
-
-  function clearTracers(){
-    tracers.forEach(line => scene.remove(line));
-    tracers.length = 0;
-  }
-
-  function updateTracers(){
-    clearTracers();
-    if(!mods.tracers) return;
+  // Draw ESP boxes around enemies, visible through walls (no occlusion logic here)
+  function drawESP() {
+    if (!mods.esp) return;
 
     enemies.forEach(enemy => {
-      const points = [];
-      points.push(camera.position.clone());
-      points.push(enemy.position.clone().add(new THREE.Vector3(0,1,0)));
-
-      const geometry = new THREE.BufferGeometry().setFromPoints(points);
-      const line = new THREE.Line(geometry, tracerMaterial);
-      scene.add(line);
-      tracers.push(line);
+      ctx.strokeStyle = 'red';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(
+        enemy.pos.x - enemy.width/2 - 2,
+        enemy.pos.y - enemy.height/2 - 2,
+        enemy.width + 4,
+        enemy.height + 4
+      );
     });
   }
 
-  // --- Aimbot FOV Circle Overlay ---
+  // Simulate shooting when aiming and left mouse clicked
+  let shooting = false;
+  window.addEventListener('mousedown', e => {
+    if (e.button === 0) shooting = true; // Left click to shoot
+  });
+  window.addEventListener('mouseup', e => {
+    if (e.button === 0) shooting = false;
+  });
 
-  const fovCanvas = document.getElementById('fovCanvas');
-  const fovCtx = fovCanvas.getContext('2d');
-  const fovRadius = fovCanvas.width / 2 * (AIMBOT_FOV / (Math.PI / 2)); // scale rad to canvas size
+  function shoot() {
+    if (!shooting || !isAiming) return;
 
-  function drawFOV(){
-    fovCtx.clearRect(0,0,fovCanvas.width,fovCanvas.height);
-    if(mods.aimbot && isAiming){
-      fovCtx.beginPath();
-      fovCtx.strokeStyle = 'rgba(0,255,0,0.7)';
-      fovCtx.lineWidth = 3;
-      fovCtx.arc(fovCanvas.width/2, fovCanvas.height/2, fovRadius, 0, Math.PI*2);
-      fovCtx.stroke();
-    }
-  }
+    // Find enemy player is aiming at (closest within small angle threshold)
+    let aimTarget = null;
+    let aimThreshold = 0.2; // radians ~11.5 degrees
 
-  // --- Mod Menu toggle with ";" key ---
-  const modMenu = document.getElementById('modMenu');
-  window.addEventListener('keydown', e => {
-    if(e.key === ';'){
-      if(modMenu.style.display === 'none' || modMenu.style.display === ''){
-        modMenu.style.display = 'block';
-      } else {
-        modMenu.style.display = 'none';
+    for (const enemy of enemies) {
+      let angleToEnemy = Math.atan2(enemy.pos.y - player.pos.y, enemy.pos.x - player.pos.x);
+      let diff = Math.abs(angleToEnemy - player.aimAngle);
+      if (diff < aimThreshold) {
+        aimTarget = enemy;
+        break;
       }
     }
-  });
 
-  // Animation loop
-  function animate(){
-    const delta = clock.getDelta();
-    shootCooldown -= delta;
-
-    if(controls.isLocked === true){
-      playerMovement(delta);
-      updateEnemies(delta);
-      aimbot(delta);
-      updateBullets(delta);
-      updateESP();
-      updateTracers();
+    if (aimTarget) {
+      // "Shoot" enemy - remove or mark hit
+      console.log('Shot enemy id:', aimTarget.id);
+      // For demo: remove enemy from array
+      enemies.splice(enemies.indexOf(aimTarget),1);
     }
-
-    drawFOV();
-
-    renderer.render(scene, camera);
-    requestAnimationFrame(animate);
   }
 
-  animate();
+  // Main render loop
+  function loop() {
+    ctx.clearRect(0,0,canvas.width,canvas.height);
 
-  // Resize handler
-  window.addEventListener('resize', () => {
-    camera.aspect = window.innerWidth/window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-  });
+    movePlayer();
+    aimbot();
+    shoot();
+
+    drawPlayer();
+    drawEnemies();
+    drawESP();
+    drawAimbotFOV();
+
+    // Draw crosshair
+    ctx.strokeStyle = 'white';
+    ctx.lineWidth = 2;
+    const crossSize = 10;
+    ctx.beginPath();
+    ctx.moveTo(player.pos.x - crossSize, player.pos.y);
+    ctx.lineTo(player.pos.x + crossSize, player.pos.y);
+    ctx.moveTo(player.pos.x, player.pos.y - crossSize);
+    ctx.lineTo(player.pos.x, player.pos.y + crossSize);
+    ctx.stroke();
+
+    requestAnimationFrame(loop);
+  }
+
+  loop();
 
 })();
 </script>
+
 </body>
 </html>
