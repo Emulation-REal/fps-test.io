@@ -3,253 +3,252 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Realistic 3D FPS with Mods</title>
+<title>3D FPS Game with Mod Menu</title>
 <style>
-  html, body {
-    margin:0; padding:0; overflow:hidden; height:100%;
-    background:#121212;
-    color:#eee;
+  body, html {
+    margin: 0; padding: 0; overflow: hidden;
     font-family: Arial, sans-serif;
+    background-color: #111;
   }
   #startScreen {
     position: absolute;
-    top:50%; left:50%;
-    transform: translate(-50%, -50%);
-    text-align: center;
-    user-select: none;
-    z-index: 10;
+    width: 100vw; height: 100vh;
+    background: rgba(0,0,0,0.85);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    z-index: 9999;
   }
   #startBtn {
-    font-size: 28px;
-    padding: 16px 50px;
+    padding: 15px 30px;
+    font-size: 20px;
     cursor: pointer;
-    background: #0078d7;
     border: none;
-    border-radius: 8px;
+    border-radius: 6px;
+    background: #28a745;
     color: white;
+    transition: background 0.3s;
+  }
+  #startBtn:hover {
+    background: #218838;
   }
   #modMenu {
-    position: absolute;
-    top: 10px; right: 10px;
-    width: 230px;
-    background: rgba(0,0,0,0.85);
-    border: 1px solid #00aaff;
-    border-radius: 8px;
-    padding: 12px 15px;
-    z-index: 20;
+    position: fixed;
+    top: 50px;
+    right: 20px;
+    background: rgba(20, 20, 20, 0.9);
+    border: 2px solid #44f;
+    padding: 15px;
+    color: white;
+    font-family: monospace;
     display: none;
-    user-select: none;
-    font-size: 14px;
-  }
-  #modMenu h2 {
-    margin: 0 0 10px;
-    font-weight: normal;
-    color: #00aaff;
+    width: 220px;
+    z-index: 9998;
+    border-radius: 8px;
   }
   #modMenu label {
     display: flex;
     align-items: center;
-    margin-bottom: 8px;
+    margin-bottom: 10px;
     cursor: pointer;
   }
-  #modMenu input[type="checkbox"] {
+  #modMenu label input {
     margin-right: 8px;
+    cursor: pointer;
   }
-  #modMenu input[type="range"] {
-    margin-left: 10px;
-    flex-grow: 1;
+  #modMenu h3 {
+    margin-top: 0;
+    margin-bottom: 10px;
+    font-weight: bold;
+    font-size: 18px;
+    border-bottom: 1px solid #44f;
+    padding-bottom: 5px;
   }
-  canvas#aimFovCanvas {
-    position: absolute;
-    pointer-events: none;
-    top: 0; left: 0;
-    z-index: 15;
+  #fovSlider {
+    width: 100%;
   }
 </style>
 </head>
 <body>
 
 <div id="startScreen">
-  <button id="startBtn">Click to Start & Lock Pointer</button>
-  <p style="opacity:0.7; margin-top:10px;">Press ";" to toggle Mod Menu</p>
-  <p style="opacity:0.5; font-size:12px;">Hold Right Mouse Button to Aim (Aimbot active only when aiming)</p>
+  <h1>3D FPS Game</h1>
+  <button id="startBtn">Start</button>
+  <p>Click Start to lock pointer and play</p>
 </div>
 
 <div id="modMenu">
-  <h2>Mod Menu</h2>
-  <label><input type="checkbox" id="espToggle" /> ESP (Boxes)</label>
-  <label><input type="checkbox" id="tracerToggle" /> Tracers</label>
-  <label><input type="checkbox" id="aimbotToggle" /> Aimbot</label>
-  <label style="margin-top:8px;">Aimbot FOV:
-    <input type="range" id="aimFovSlider" min="30" max="200" value="100" />
-  </label>
+  <h3>Mod Menu (Toggle with ;)</h3>
+  <label><input type="checkbox" id="espToggle" /> ESP (Show players)</label>
+  <label><input type="checkbox" id="tracersToggle" /> Tracers</label>
+  <label><input type="checkbox" id="aimbotToggle" /> Aimbot (Aim only)</label>
+  <label>FOV: <input type="range" id="fovSlider" min="30" max="120" value="75" /></label>
 </div>
-
-<canvas id="aimFovCanvas"></canvas>
 
 <script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.152.2/examples/js/controls/PointerLockControls.js"></script>
 
 <script>
-(() => {
+  // Basic setup
   const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x888888);
+
   const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
-  const renderer = new THREE.WebGLRenderer({antialias:true});
+  camera.position.set(0, 1.6, 5);
+
+  const renderer = new THREE.WebGLRenderer({antialias: true});
   renderer.setSize(window.innerWidth, window.innerHeight);
   document.body.appendChild(renderer.domElement);
 
   // Lighting
-  const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
   scene.add(ambientLight);
-  const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-  directionalLight.position.set(5,10,7);
-  scene.add(directionalLight);
+  const dirLight = new THREE.DirectionalLight(0xffffff, 0.7);
+  dirLight.position.set(5, 10, 7);
+  scene.add(dirLight);
 
-  // Floor - realistic texture color
-  const floorGeometry = new THREE.PlaneGeometry(50, 50);
-  const floorMaterial = new THREE.MeshStandardMaterial({color: 0x555555});
-  const floor = new THREE.Mesh(floorGeometry, floorMaterial);
+  // Floor
+  const floorGeo = new THREE.PlaneGeometry(50, 50);
+  const floorMat = new THREE.MeshStandardMaterial({color: 0x444444});
+  const floor = new THREE.Mesh(floorGeo, floorMat);
   floor.rotation.x = -Math.PI/2;
-  floor.receiveShadow = true;
   scene.add(floor);
 
-  // Walls (box geometry) with collision boxes
+  // Walls (box colliders)
   const walls = [];
-  const wallBoxes = []; // for collisions
-
-  function addWall(x, y, z, w, h, d, color=0x444444) {
-    const geometry = new THREE.BoxGeometry(w, h, d);
-    const material = new THREE.MeshStandardMaterial({color, roughness:0.8});
-    const wall = new THREE.Mesh(geometry, material);
-    wall.position.set(x, y, z);
-    wall.castShadow = true;
-    wall.receiveShadow = true;
-    scene.add(wall);
-    walls.push(wall);
-    // Create collision box (AABB)
-    const box = new THREE.Box3().setFromObject(wall);
-    wallBoxes.push(box);
-  }
-
-  // Add walls around edges - like a room
-  const wallHeight = 3;
-  const wallThickness = 1;
-  const halfMapSize = 25;
+  const wallGeo = new THREE.BoxGeometry(10, 3, 0.5);
+  const wallMat = new THREE.MeshStandardMaterial({color: 0x555555});
 
   // Back wall
-  addWall(0, wallHeight/2, -halfMapSize, 50, wallHeight, wallThickness);
-  // Front wall
-  addWall(0, wallHeight/2, halfMapSize, 50, wallHeight, wallThickness);
-  // Left wall
-  addWall(-halfMapSize, wallHeight/2, 0, wallThickness, wallHeight, 50);
-  // Right wall
-  addWall(halfMapSize, wallHeight/2, 0, wallThickness, wallHeight, 50);
+  const backWall = new THREE.Mesh(wallGeo, wallMat);
+  backWall.position.set(0, 1.5, -5);
+  scene.add(backWall);
+  walls.push(backWall);
 
-  // Add some internal walls for hiding spots
-  addWall(-8, wallHeight/2, -5, 10, wallHeight, wallThickness, 0x666666);
-  addWall(8, wallHeight/2, 7, 12, wallHeight, wallThickness, 0x666666);
-  addWall(0, wallHeight/2, 12, 15, wallHeight, wallThickness, 0x666666);
+  // Front wall
+  const frontWall = new THREE.Mesh(wallGeo, wallMat);
+  frontWall.position.set(0, 1.5, 5);
+  scene.add(frontWall);
+  walls.push(frontWall);
+
+  // Left wall
+  const leftWall = new THREE.Mesh(new THREE.BoxGeometry(0.5, 3, 10), wallMat);
+  leftWall.position.set(-5, 1.5, 0);
+  scene.add(leftWall);
+  walls.push(leftWall);
+
+  // Right wall
+  const rightWall = new THREE.Mesh(new THREE.BoxGeometry(0.5, 3, 10), wallMat);
+  rightWall.position.set(5, 1.5, 0);
+  scene.add(rightWall);
+  walls.push(rightWall);
+
+  // Some inner boxes for hiding
+  function createBox(x, z) {
+    const geo = new THREE.BoxGeometry(2, 3, 2);
+    const mat = new THREE.MeshStandardMaterial({color: 0x666666});
+    const box = new THREE.Mesh(geo, mat);
+    box.position.set(x, 1.5, z);
+    scene.add(box);
+    walls.push(box);
+  }
+  createBox(-2, 0);
+  createBox(2, 2);
 
   // Player setup
   const player = {
-    height: 1.8,
     velocity: new THREE.Vector3(),
+    direction: new THREE.Vector3(),
     speed: 5,
     canJump: false,
-    box: new THREE.Box3(),
-    position: new THREE.Vector3(0, 1.8/2, 0)
+    height: 1.6
   };
 
-  // Set initial camera position
-  camera.position.set(0, player.height, 5);
-
-  // PointerLockControls for FPS style look/move
+  // Pointer lock controls
   const controls = new THREE.PointerLockControls(camera, document.body);
 
-  // Movement controls
-  const move = {forward:false, backward:false, left:false, right:false};
-  let prevTime = performance.now();
+  // Movement keys
+  const keys = {};
+  document.addEventListener('keydown', e => { keys[e.code] = true; });
+  document.addEventListener('keyup', e => { keys[e.code] = false; });
 
-  // Key controls
-  function onKeyDown(e) {
-    switch(e.code) {
-      case 'ArrowUp':
-      case 'KeyW': move.forward = true; break;
-      case 'ArrowLeft':
-      case 'KeyA': move.left = true; break;
-      case 'ArrowDown':
-      case 'KeyS': move.backward = true; break;
-      case 'ArrowRight':
-      case 'KeyD': move.right = true; break;
-    }
-  }
-  function onKeyUp(e) {
-    switch(e.code) {
-      case 'ArrowUp':
-      case 'KeyW': move.forward = false; break;
-      case 'ArrowLeft':
-      case 'KeyA': move.left = false; break;
-      case 'ArrowDown':
-      case 'KeyS': move.backward = false; break;
-      case 'ArrowRight':
-      case 'KeyD': move.right = false; break;
-    }
-  }
-  window.addEventListener('keydown', onKeyDown);
-  window.addEventListener('keyup', onKeyUp);
+  // Start screen and button
+  const startScreen = document.getElementById('startScreen');
+  const startBtn = document.getElementById('startBtn');
 
-  // Collision detection helper: check if player's box collides with any wall boxes
-  function checkCollisions(newPos) {
-    const playerBox = new THREE.Box3(
-      new THREE.Vector3(newPos.x - 0.3, 0, newPos.z - 0.3),
-      new THREE.Vector3(newPos.x + 0.3, player.height, newPos.z + 0.3)
-    );
-    for(const wallBox of wallBoxes) {
-      if(playerBox.intersectsBox(wallBox)) {
+  startBtn.addEventListener('click', () => {
+    controls.lock();
+
+    // Error catch for pointer lock
+    document.addEventListener('pointerlockerror', () => {
+      alert('Pointer Lock failed. Please click the Start button again.');
+    }, {once: true});
+  });
+
+  controls.addEventListener('lock', () => {
+    startScreen.style.display = 'none';
+    // Reset player position
+    player.position = new THREE.Vector3(0, player.height, 0);
+    controls.getObject().position.copy(player.position);
+    velocityY = 0;
+    animate();
+  });
+
+  controls.addEventListener('unlock', () => {
+    startScreen.style.display = 'flex';
+  });
+
+  // Physics for player movement and collision
+  let velocityY = 0;
+  const gravity = -9.8;
+  const deltaTime = 1/60;
+
+  function checkCollision(pos) {
+    // Simple AABB collision detection
+    for (const wall of walls) {
+      const box = new THREE.Box3().setFromObject(wall);
+      // Create player box (approximate)
+      const playerBox = new THREE.Box3(
+        new THREE.Vector3(pos.x - 0.3, pos.y - player.height, pos.z - 0.3),
+        new THREE.Vector3(pos.x + 0.3, pos.y, pos.z + 0.3)
+      );
+      if (box.intersectsBox(playerBox)) {
         return true;
       }
     }
     return false;
   }
 
-  // Simple enemies to test ESP, tracers, aimbot
-  const enemies = [];
-  const enemyMeshes = [];
-  const enemyCount = 5;
+  // Mods state
+  let mods = {
+    esp: false,
+    tracers: false,
+    aimbot: false,
+    fov: 75
+  };
 
-  for(let i=0; i<enemyCount; i++) {
-    const geometry = new THREE.CylinderGeometry(0.3, 0.3, 1.8, 16);
-    const material = new THREE.MeshStandardMaterial({color:0xff4444});
-    const enemy = new THREE.Mesh(geometry, material);
-    enemy.position.set(
-      (Math.random() - 0.5) * 40,
-      0.9,
-      (Math.random() - 0.5) * 40
-    );
-    scene.add(enemy);
-    enemies.push(enemy);
-  }
-
-  // Mod menu elements
+  // Mod Menu elements
   const modMenu = document.getElementById('modMenu');
   const espToggle = document.getElementById('espToggle');
-  const tracerToggle = document.getElementById('tracerToggle');
+  const tracersToggle = document.getElementById('tracersToggle');
   const aimbotToggle = document.getElementById('aimbotToggle');
-  const aimFovSlider = document.getElementById('aimFovSlider');
+  const fovSlider = document.getElementById('fovSlider');
 
-  // Aim variables
-  let isAiming = false;
-  window.addEventListener('mousedown', (e) => {
-    if(e.button === 2) isAiming = true; // right mouse button down
-  });
-  window.addEventListener('mouseup', (e) => {
-    if(e.button === 2) isAiming = false; // right mouse button up
+  espToggle.addEventListener('change', e => mods.esp = e.target.checked);
+  tracersToggle.addEventListener('change', e => mods.tracers = e.target.checked);
+  aimbotToggle.addEventListener('change', e => mods.aimbot = e.target.checked);
+  fovSlider.addEventListener('input', e => {
+    mods.fov = Number(e.target.value);
+    camera.fov = mods.fov;
+    camera.updateProjectionMatrix();
   });
 
-  // Toggle mod menu by pressing ";"
-  window.addEventListener('keydown', (e) => {
-    if(e.key === ';') {
-      if(modMenu.style.display === 'none' || modMenu.style.display === '') {
+  // Toggle mod menu with ';'
+  document.addEventListener('keydown', e => {
+    if (e.key === ';') {
+      if (modMenu.style.display === 'none' || modMenu.style.display === '') {
         modMenu.style.display = 'block';
       } else {
         modMenu.style.display = 'none';
@@ -257,182 +256,155 @@
     }
   });
 
-  // Aim FOV canvas to draw circle in center
-  const aimFovCanvas = document.getElementById('aimFovCanvas');
-  const aimFovCtx = aimFovCanvas.getContext('2d');
+  // Other players dummy data for ESP and aimbot demonstration
+  // In real game these would be other player objects received from server
+  const otherPlayers = [
+    {id: 1, position: new THREE.Vector3(3, 1.6, -2)},
+    {id: 2, position: new THREE.Vector3(-4, 1.6, 1)},
+    {id: 3, position: new THREE.Vector3(1, 1.6, 3)},
+  ];
 
-  function resizeCanvas() {
-    aimFovCanvas.width = window.innerWidth;
-    aimFovCanvas.height = window.innerHeight;
-  }
-  window.addEventListener('resize', resizeCanvas);
-  resizeCanvas();
+  // Box helper for ESP
+  const espBoxes = otherPlayers.map(p => {
+    const box = new THREE.BoxHelper(new THREE.Mesh(new THREE.BoxGeometry(1, 2, 1)), 0xff0000);
+    scene.add(box);
+    return box;
+  });
 
-  // Utility: convert 3D world position to 2D screen position
-  function toScreenPosition(pos) {
-    const vector = pos.clone().project(camera);
-    return {
-      x: (vector.x + 1) / 2 * window.innerWidth,
-      y: (-vector.y + 1) / 2 * window.innerHeight,
-      z: vector.z
-    };
-  }
+  // Tracer lines
+  const tracerMaterial = new THREE.LineBasicMaterial({color: 0x00ff00});
+  const tracerGeometry = new THREE.BufferGeometry();
+  const tracerPositions = new Float32Array(6); // 2 points x 3 coords
+  tracerGeometry.setAttribute('position', new THREE.BufferAttribute(tracerPositions, 3));
+  const tracers = otherPlayers.map(() => new THREE.Line(tracerGeometry.clone(), tracerMaterial));
+  tracers.forEach(line => scene.add(line));
 
-  // Render loop
+  // Raycaster for aimbot targeting
+  const raycaster = new THREE.Raycaster();
+
+  // Main animate loop
+  let prevTime = performance.now();
   function animate() {
-    requestAnimationFrame(animate);
+    if (!controls.isLocked) return;
 
-    if(controls.isLocked === true) {
-      const time = performance.now();
-      const delta = (time - prevTime) / 1000;
+    const time = performance.now();
+    const delta = (time - prevTime) / 1000;
 
-      // Calculate direction vector
-      const velocity = new THREE.Vector3();
-      if(move.forward) velocity.z -= 1;
-      if(move.backward) velocity.z += 1;
-      if(move.left) velocity.x -= 1;
-      if(move.right) velocity.x += 1;
-      velocity.normalize();
-      velocity.multiplyScalar(player.speed * delta);
+    // Movement direction
+    player.direction.set(0, 0, 0);
+    if (keys['KeyW']) player.direction.z -= 1;
+    if (keys['KeyS']) player.direction.z += 1;
+    if (keys['KeyA']) player.direction.x -= 1;
+    if (keys['KeyD']) player.direction.x += 1;
+    player.direction.normalize();
 
-      // Apply camera rotation to movement vector
-      const euler = new THREE.Euler(0, camera.rotation.y, 0);
-      velocity.applyEuler(euler);
+    // Calculate movement velocity
+    let moveX = player.direction.x * player.speed * delta;
+    let moveZ = player.direction.z * player.speed * delta;
 
-      // Calculate new proposed position
-      const newPos = player.position.clone().add(velocity);
+    // Calculate new position candidate
+    const pos = controls.getObject().position.clone();
+    const newPos = pos.clone();
+    newPos.x += moveX;
+    if (!checkCollision(new THREE.Vector3(newPos.x, pos.y, pos.z))) pos.x = newPos.x;
+    newPos.z += moveZ;
+    if (!checkCollision(new THREE.Vector3(pos.x, pos.y, newPos.z))) pos.z = newPos.z;
 
-      // Check collision; if no collision update position
-      if(!checkCollisions(newPos)) {
-        player.position.copy(newPos);
-        controls.getObject().position.copy(player.position);
-        controls.getObject().position.y = player.height;
+    // Gravity & jumping (simple)
+    velocityY += gravity * delta;
+    let newY = pos.y + velocityY * delta;
+    if (newY < player.height) {
+      velocityY = 0;
+      newY = player.height;
+      player.canJump = true;
+    }
+    pos.y = newY;
+
+    controls.getObject().position.copy(pos);
+
+    // ESP Boxes update
+    espBoxes.forEach((boxHelper, i) => {
+      if (mods.esp) {
+        boxHelper.visible = true;
+        const p = otherPlayers[i].position;
+        boxHelper.box.setFromCenterAndSize(p, new THREE.Vector3(1, 2, 1));
+      } else {
+        boxHelper.visible = false;
       }
+    });
 
-      prevTime = time;
+    // Tracers update
+    tracers.forEach((line, i) => {
+      if (mods.tracers) {
+        line.visible = true;
+        const pos = controls.getObject().position;
+        const targetPos = otherPlayers[i].position;
+        const positions = line.geometry.attributes.position.array;
+        positions[0] = pos.x;
+        positions[1] = pos.y;
+        positions[2] = pos.z;
+        positions[3] = targetPos.x;
+        positions[4] = targetPos.y;
+        positions[5] = targetPos.z;
+        line.geometry.attributes.position.needsUpdate = true;
+      } else {
+        line.visible = false;
+      }
+    });
+
+    // Aimbot (only when right mouse button is down)
+    if (mods.aimbot && aiming) {
+      // Find closest player within FOV
+      let closestPlayer = null;
+      let closestAngle = mods.fov * (Math.PI/180); // convert degrees to radians
+      const playerPos = controls.getObject().position;
+
+      otherPlayers.forEach(p => {
+        const directionToPlayer = new THREE.Vector3().subVectors(p.position, playerPos).normalize();
+        const cameraDir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+        const angle = cameraDir.angleTo(directionToPlayer);
+        if (angle < closestAngle) {
+          closestAngle = angle;
+          closestPlayer = p;
+        }
+      });
+
+      if (closestPlayer) {
+        // Smoothly rotate camera toward closest player
+        const targetDir = new THREE.Vector3().subVectors(closestPlayer.position, playerPos).normalize();
+        const currentDir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+
+        // Slerp to target direction
+        const newDir = currentDir.lerp(targetDir, 0.15).normalize();
+
+        // Compute new camera quaternion from direction
+        const up = new THREE.Vector3(0, 1, 0);
+        const newQuat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, -1), newDir);
+        camera.quaternion.slerp(newQuat, 0.15);
+        controls.getObject().quaternion.copy(camera.quaternion);
+      }
     }
 
+    prevTime = time;
     renderer.render(scene, camera);
-
-    drawModOverlays();
+    requestAnimationFrame(animate);
   }
 
-  // Draw ESP, tracers, and aimbot FOV circle on overlay canvas
-  function drawModOverlays() {
-    aimFovCtx.clearRect(0, 0, aimFovCanvas.width, aimFovCanvas.height);
-
-    // Draw aimbot FOV circle if aimbot enabled and aiming
-    if(aimbotToggle.checked && isAiming) {
-      const fovRadius = aimFovSlider.value;
-      aimFovCtx.strokeStyle = 'rgba(0, 170, 255, 0.7)';
-      aimFovCtx.lineWidth = 2;
-      aimFovCtx.beginPath();
-      aimFovCtx.arc(window.innerWidth/2, window.innerHeight/2, fovRadius, 0, Math.PI*2);
-      aimFovCtx.stroke();
-    }
-
-    // Draw ESP boxes and tracers
-    if(espToggle.checked || tracerToggle.checked) {
-      enemies.forEach(enemy => {
-        // Get enemy top and bottom positions in screen coords
-        const enemyPos = enemy.position.clone();
-        const topPos = enemyPos.clone().add(new THREE.Vector3(0, 0.9, 0)); // half height
-
-        const screenBottom = toScreenPosition(enemyPos);
-        const screenTop = toScreenPosition(topPos);
-
-        if(screenBottom.z < 1) {
-          // Draw ESP box
-          if(espToggle.checked) {
-            const height = Math.abs(screenTop.y - screenBottom.y);
-            const width = height/2;
-            const x = screenBottom.x - width/2;
-            const y = screenTop.y;
-
-            aimFovCtx.strokeStyle = 'rgba(0,255,0,0.8)';
-            aimFovCtx.lineWidth = 2;
-            aimFovCtx.strokeRect(x, y, width, height);
-          }
-
-          // Draw tracers
-          if(tracerToggle.checked) {
-            aimFovCtx.strokeStyle = 'rgba(255, 0, 0, 0.6)';
-            aimFovCtx.lineWidth = 1.5;
-            aimFovCtx.beginPath();
-            aimFovCtx.moveTo(window.innerWidth/2, window.innerHeight);
-            aimFovCtx.lineTo(screenBottom.x, screenBottom.y);
-            aimFovCtx.stroke();
-          }
-        }
-      });
-    }
-
-    // Aimbot logic - if enabled and aiming, find closest enemy in FOV and aim at them smoothly
-    if(aimbotToggle.checked && isAiming && controls.isLocked) {
-      const fovRadius = aimFovSlider.value;
-      let closestEnemy = null;
-      let closestDist = fovRadius * fovRadius;
-
-      enemies.forEach(enemy => {
-        const pos = toScreenPosition(enemy.position.clone().add(new THREE.Vector3(0,0.9,0)));
-        if(pos.z < 1) {
-          const dx = pos.x - window.innerWidth/2;
-          const dy = pos.y - window.innerHeight/2;
-          const distSq = dx*dx + dy*dy;
-          if(distSq < closestDist) {
-            closestDist = distSq;
-            closestEnemy = enemy;
-          }
-        }
-      });
-
-      if(closestEnemy) {
-        // Calculate vector to enemy from camera
-        const targetPos = closestEnemy.position.clone().add(new THREE.Vector3(0,0.9,0));
-        // Convert to local space for camera rotation
-        const camPos = camera.position.clone();
-        const dirToTarget = targetPos.clone().sub(camPos).normalize();
-
-        // Calculate target yaw and pitch
-        const targetYaw = Math.atan2(dirToTarget.x, dirToTarget.z);
-        const targetPitch = Math.asin(dirToTarget.y);
-
-        // Smoothly rotate camera rotation.y (yaw) and rotation.x (pitch) toward target
-        const lerpFactor = 0.15;
-
-        // Clamp pitch between -PI/2 and PI/2 to avoid flipping
-        camera.rotation.y += (targetYaw - camera.rotation.y) * lerpFactor;
-        camera.rotation.x += (targetPitch - camera.rotation.x) * lerpFactor;
-        camera.rotation.x = Math.min(Math.max(camera.rotation.x, -Math.PI/2), Math.PI/2);
-      }
-    }
-  }
-
-  // Start pointer lock and game on button click
-  const startScreen = document.getElementById('startScreen');
-  const startBtn = document.getElementById('startBtn');
-  startBtn.addEventListener('click', () => {
-    controls.lock();
+  // Track right mouse button for aimbot aiming
+  let aiming = false;
+  document.addEventListener('mousedown', e => {
+    if (e.button === 2) aiming = true; // right click pressed
+  });
+  document.addEventListener('mouseup', e => {
+    if (e.button === 2) aiming = false; // right click released
   });
 
-  controls.addEventListener('lock', () => {
-    startScreen.style.display = 'none';
-    controls.getObject().position.copy(player.position);
-    animate();
-  });
-  controls.addEventListener('unlock', () => {
-    startScreen.style.display = 'block';
-  });
-
-  // On resize update renderer and camera aspect
+  // Resize handling
   window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth/window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
-    resizeCanvas();
   });
-
-})();
 </script>
 
 </body>
